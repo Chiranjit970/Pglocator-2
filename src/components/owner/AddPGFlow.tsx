@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -10,11 +10,13 @@ import {
   Upload,
   X,
   Plus,
-  IndianRupee
+  IndianRupee,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
+import { createClient } from '../../utils/supabase/client';
 
 interface AddPGFlowProps {
   onBack: () => void;
@@ -59,6 +61,7 @@ const AVAILABLE_AMENITIES = [
 export default function AddPGFlow({ onBack, onSuccess }: AddPGFlowProps) {
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const { user, accessToken } = useAuthStore();
   
   const [formData, setFormData] = useState<FormData>({
@@ -153,12 +156,43 @@ export default function AddPGFlow({ onBack, onSuccess }: AddPGFlowProps) {
     }
   };
 
-  const addImageURL = (url: string) => {
-    if (url && formData.images.length < 5) {
-      updateFormData({
-        images: [...formData.images, url]
-      });
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (formData.images.length + files.length > 5) {
+      toast.error('You can upload a maximum of 5 images.');
+      return;
     }
+
+    setIsUploading(true);
+    const supabase = createClient();
+    const uploadedUrls: string[] = [];
+
+    for (const file of files) {
+      const filePath = `public/${user?.id}/${Date.now()}-${file.name}`;
+      try {
+        const { data, error } = await supabase.storage
+          .from('pg_images')
+          .upload(filePath, file);
+
+        if (error) throw error;
+
+        const { data: urlData } = supabase.storage
+          .from('pg_images')
+          .getPublicUrl(data.path);
+        
+        uploadedUrls.push(urlData.publicUrl);
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        toast.error('Failed to upload an image. Please try again.');
+        setIsUploading(false);
+        return;
+      }
+    }
+
+    updateFormData({ images: [...formData.images, ...uploadedUrls] });
+    setIsUploading(false);
   };
 
   const removeImage = (index: number) => {
@@ -263,60 +297,45 @@ export default function AddPGFlow({ onBack, onSuccess }: AddPGFlowProps) {
     >
       <div>
         <label className="block text-stone-700 mb-2">Property Images</label>
-        <p className="text-stone-600 text-sm mb-4">Add image URLs (up to 5 images)</p>
+        <p className="text-stone-600 text-sm mb-4">Upload up to 5 images of your property.</p>
         
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
           {formData.images.map((url, index) => (
-            <div key={index} className="flex gap-2">
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => {
-                  const newImages = [...formData.images];
-                  newImages[index] = e.target.value;
-                  updateFormData({ images: newImages });
-                }}
-                className="flex-1 px-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
-                placeholder="https://example.com/image.jpg"
+            <div key={index} className="relative aspect-video bg-stone-100 rounded-xl overflow-hidden group">
+              <img
+                src={url}
+                alt={`Preview ${index + 1}`}
+                className="w-full h-full object-cover"
               />
               <button
                 onClick={() => removeImage(index)}
-                className="px-4 py-3 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition-colors"
+                className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           ))}
-          
+
           {formData.images.length < 5 && (
-            <button
-              onClick={() => addImageURL('')}
-              className="w-full py-3 px-4 border-2 border-dashed border-stone-300 rounded-xl text-stone-600 hover:border-amber-500 hover:text-amber-600 transition-all flex items-center justify-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              Add Image URL
-            </button>
+            <label className="aspect-video flex flex-col items-center justify-center border-2 border-dashed border-stone-300 rounded-xl text-stone-600 hover:border-amber-500 hover:text-amber-600 transition-all cursor-pointer">
+              <Upload className="w-8 h-8 mb-2" />
+              <span className="text-sm text-center">Click to upload</span>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                disabled={isUploading}
+              />
+            </label>
           )}
         </div>
 
-        {/* Image Preview */}
-        {formData.images.filter(url => url).length > 0 && (
-          <div className="mt-6">
-            <p className="text-stone-700 mb-3">Preview:</p>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {formData.images.filter(url => url).map((url, index) => (
-                <div key={index} className="relative aspect-video bg-stone-100 rounded-xl overflow-hidden">
-                  <img
-                    src={url}
-                    alt={`Preview ${index + 1}`}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
+        {isUploading && (
+          <div className="flex items-center gap-2 text-stone-600">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Uploading images...</span>
           </div>
         )}
       </div>
@@ -324,7 +343,6 @@ export default function AddPGFlow({ onBack, onSuccess }: AddPGFlowProps) {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
         <p className="text-blue-900 text-sm">
           💡 Tip: Use high-quality images that showcase your rooms, common areas, and facilities.
-          You can use image hosting services like Unsplash or upload to your own server.
         </p>
       </div>
     </motion.div>
@@ -476,7 +494,11 @@ export default function AddPGFlow({ onBack, onSuccess }: AddPGFlowProps) {
         
         <div>
           <p className="text-stone-500 text-sm">Images</p>
-          <p className="text-stone-800">{formData.images.filter(url => url).length} images uploaded</p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {formData.images.map((url, index) => (
+              <img key={index} src={url} alt={`PG image ${index + 1}`} className="w-20 h-20 rounded-lg object-cover" />
+            ))}
+          </div>
         </div>
         
         <div>
@@ -518,7 +540,7 @@ export default function AddPGFlow({ onBack, onSuccess }: AddPGFlowProps) {
       case 1:
         return formData.name && formData.description && formData.location && formData.distance && formData.ownerPhone;
       case 2:
-        return formData.images.filter(url => url).length > 0;
+        return formData.images.length > 0;
       case 3:
         return formData.amenities.length > 0;
       case 4:
