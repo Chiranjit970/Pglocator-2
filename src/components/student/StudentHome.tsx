@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Search, SlidersHorizontal, MapPin, Star, Heart, LogOut, User, BookmarkCheck } from 'lucide-react';
+import { Search, SlidersHorizontal, MapPin, Star, Heart, LogOut, User, BookmarkCheck, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
@@ -45,6 +45,14 @@ export default function StudentHome() {
   useEffect(() => {
     fetchPGs();
     fetchFavorites();
+    
+    // Auto-refresh PGs every 30 seconds to get newly verified listings
+    const refreshInterval = setInterval(() => {
+      fetchPGs();
+      fetchFavorites();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(refreshInterval);
   }, []);
 
   useEffect(() => {
@@ -52,13 +60,28 @@ export default function StudentHome() {
   }, [pgs, searchQuery, filters]);
 
   const fetchPGs = async () => {
+    if (!accessToken) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/pgs`
+        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/pgs`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
       );
       if (response.ok) {
         const data = await response.json();
         setPgs(data);
+      } else {
+        if (response.status === 401) {
+          toast.error('Authentication error. Please log in again.');
+        } else {
+          toast.error('Failed to load PG listings.');
+        }
       }
     } catch (error) {
       console.error('Error fetching PGs:', error);
@@ -246,6 +269,20 @@ export default function StudentHome() {
                 className="w-full pl-12 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
+            <button
+              onClick={() => {
+                setIsLoading(true);
+                fetchPGs();
+                fetchFavorites();
+                toast.info('Refreshing listings...');
+              }}
+              disabled={isLoading}
+              className="px-6 py-3 bg-white border border-stone-300 rounded-xl hover:bg-stone-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+              title="Refresh to see newly verified listings"
+            >
+              <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="px-6 py-3 bg-white border border-stone-300 rounded-xl hover:bg-stone-50 transition-colors flex items-center gap-2"

@@ -242,6 +242,8 @@ app.post("/make-server-2c39c550/init-data", async (c) => {
         rating: 4.5,
         reviews: 24,
         verified: true,
+        verificationStatus: 'verified',
+        active: true,
         ownerName: 'Rajesh Kumar',
         ownerPhone: '+91 98765 43210',
         roomTypes: [
@@ -266,6 +268,8 @@ app.post("/make-server-2c39c550/init-data", async (c) => {
         rating: 4.7,
         reviews: 31,
         verified: true,
+        verificationStatus: 'verified',
+        active: true,
         ownerName: 'Priya Sharma',
         ownerPhone: '+91 98765 43211',
         roomTypes: [
@@ -291,6 +295,8 @@ app.post("/make-server-2c39c550/init-data", async (c) => {
         rating: 4.3,
         reviews: 18,
         verified: true,
+        verificationStatus: 'verified',
+        active: true,
         ownerName: 'Amit Borah',
         ownerPhone: '+91 98765 43212',
         roomTypes: [
@@ -315,6 +321,8 @@ app.post("/make-server-2c39c550/init-data", async (c) => {
         rating: 4.1,
         reviews: 12,
         verified: false,
+        verificationStatus: 'pending',
+        active: false,
         ownerName: 'Suresh Das',
         ownerPhone: '+91 98765 43213',
         roomTypes: [
@@ -339,6 +347,8 @@ app.post("/make-server-2c39c550/init-data", async (c) => {
         rating: 4.8,
         reviews: 42,
         verified: true,
+        verificationStatus: 'verified',
+        active: true,
         ownerName: 'Anjali Devi',
         ownerPhone: '+91 98765 43214',
         roomTypes: [
@@ -363,6 +373,8 @@ app.post("/make-server-2c39c550/init-data", async (c) => {
         rating: 3.9,
         reviews: 8,
         verified: false,
+        verificationStatus: 'pending',
+        active: false,
         ownerName: 'Ramesh Saikia',
         ownerPhone: '+91 98765 43215',
         roomTypes: [
@@ -513,11 +525,15 @@ app.get("/make-server-2c39c550/user/profile", requireAuth, async (c) => {
   }
 });
 
-// ===== GET ALL PGS =====
-app.get("/make-server-2c39c550/pgs", async (c) => {
+app.get("/make-server-2c39c550/pgs", requireAuth, async (c) => {
   try {
-    const pgs = await kv.getByPrefix('pg:');
-    return c.json(pgs || []);
+    const allPGs = await kv.getByPrefix('pg:') || [];
+    
+    // Filter to only return verified and active PGs (for students to see)
+    const verifiedPGs = allPGs.filter((pg: any) => pg.verified === true && pg.active === true);
+    
+    console.log(`Returning ${verifiedPGs.length} verified PGs out of ${allPGs.length} total PGs`);
+    return c.json(verifiedPGs);
   } catch (error) {
     console.error('Error fetching PGs:', error);
     return c.json({ error: 'Failed to fetch PGs' }, 500);
@@ -525,6 +541,7 @@ app.get("/make-server-2c39c550/pgs", async (c) => {
 });
 
 // ===== GET SINGLE PG =====
+// For students, only return if verified. For owners/admins, return regardless of status.
 app.get("/make-server-2c39c550/pgs/:id", async (c) => {
   try {
     const id = c.req.param('id');
@@ -534,7 +551,37 @@ app.get("/make-server-2c39c550/pgs/:id", async (c) => {
       return c.json({ error: 'PG not found' }, 404);
     }
 
-    return c.json(pg);
+    // Check if user is authenticated and what role they have
+    const accessToken = c.req.header('Authorization')?.split(' ')[1];
+    let userRole: string | null = null;
+    let userId: string | null = null;
+    
+    if (accessToken) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser(accessToken);
+        if (user) {
+          userId = user.id;
+          const profile = await kv.get(`user:${user.id}`);
+          userRole = profile?.role || null;
+        }
+      } catch (error) {
+        // If auth fails, treat as anonymous (student)
+        console.log('Auth check failed, treating as anonymous');
+      }
+    }
+
+    // If user is owner of this PG or admin, return it regardless of verification status
+    if (userRole === 'admin' || (userRole === 'owner' && pg.ownerId === userId)) {
+      return c.json(pg);
+    }
+
+    // For students or anonymous users, only return if verified and active
+    if (pg.verified === true && pg.active === true) {
+      return c.json(pg);
+    }
+
+    // PG exists but is not verified and user is not admin/owner
+    return c.json({ error: 'PG not found or not yet verified' }, 404);
   } catch (error) {
     console.error('Error fetching PG:', error);
     return c.json({ error: 'Failed to fetch PG' }, 500);
@@ -555,7 +602,12 @@ app.get("/make-server-2c39c550/user/favorites", requireAuth, async (c) => {
     const pgPromises = favorites.map(id => kv.get(`pg:${id}`));
     const pgs = await Promise.all(pgPromises);
     
-    return c.json(pgs.filter(pg => pg !== null));
+    // Only return verified and active PGs (students should only see verified favorites)
+    const verifiedPGs = pgs.filter(pg => 
+      pg !== null && pg.verified === true && pg.active === true
+    );
+    
+    return c.json(verifiedPGs);
   } catch (error) {
     console.error('Error fetching favorites:', error);
     return c.json({ error: 'Failed to fetch favorites' }, 500);
@@ -833,6 +885,7 @@ app.post("/make-server-2c39c550/owner/pgs", requireAuth, async (c) => {
       ownerId: userId,
       verified: false,
       verificationStatus: 'pending',
+      active: false, // New PGs are inactive until verified by admin
       rating: 0,
       reviews: 0,
       createdAt: new Date().toISOString(),
@@ -1090,12 +1143,14 @@ app.post("/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c) =>
       ...pg,
       verified: true,
       verificationStatus: 'verified',
+      active: true, // Mark as active so it appears in student dashboards
       verifiedAt: new Date().toISOString(),
       verifiedBy: userId,
     };
 
     await kv.set(`pg:${pgId}`, updatedPG);
-    return c.json({ message: 'PG verified successfully', pg: updatedPG });
+    console.log(`PG ${pgId} (${pg.name}) has been verified and activated by admin ${userId}`);
+    return c.json({ message: 'PG verified successfully and is now active', pg: updatedPG });
   } catch (error) {
     console.error('Error verifying PG:', error);
     return c.json({ error: 'Failed to verify PG' }, 500);
@@ -1124,13 +1179,15 @@ app.post("/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c) =>
       ...pg,
       verified: false,
       verificationStatus: 'rejected',
+      active: false, // Mark as inactive so it doesn't appear in student dashboards
       rejectionReason: body.reason || 'No reason provided',
       rejectedAt: new Date().toISOString(),
       rejectedBy: userId,
     };
 
     await kv.set(`pg:${pgId}`, updatedPG);
-    return c.json({ message: 'PG rejected', pg: updatedPG });
+    console.log(`PG ${pgId} (${pg.name}) has been rejected by admin ${userId}`);
+    return c.json({ message: 'PG rejected and removed from student view', pg: updatedPG });
   } catch (error) {
     console.error('Error rejecting PG:', error);
     return c.json({ error: 'Failed to reject PG' }, 500);
