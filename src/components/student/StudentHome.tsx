@@ -161,9 +161,9 @@ export default function StudentHome() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    window.location.reload();
+  const handleLogout = async () => {
+    await logout();
+    window.location.href = '/';
   };
 
   // Show different pages based on navigation

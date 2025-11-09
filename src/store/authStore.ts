@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createClient } from '../utils/supabase/client';
 
 export type UserRole = 'student' | 'owner' | 'admin';
 
@@ -26,7 +27,7 @@ interface AuthState {
   setUser: (user: UserProfile | null) => void;
   setAccessToken: (token: string | null) => void;
   setIsLoading: (loading: boolean) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -36,7 +37,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => set({ user }),
   setAccessToken: (token) => set({ accessToken: token }),
   setIsLoading: (loading) => set({ isLoading: loading }),
-  logout: () => {
+  logout: async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
     set({ user: null, accessToken: null });
     localStorage.removeItem('userRole');
   },

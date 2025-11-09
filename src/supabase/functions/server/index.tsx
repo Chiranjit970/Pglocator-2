@@ -52,6 +52,51 @@ app.get("/make-server-2c39c550/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+// Diagnostic endpoint to check demo users status
+app.get("/make-server-2c39c550/diagnose-demo-users", async (c) => {
+  try {
+    const demoEmails = [
+      'teststuff677+test@gmail.com',
+      'teststuff677+test1@gmail.com',
+      'teststuff677@gmail.com',
+    ];
+
+    const { data: authUsers, error: listError } = await supabase.auth.admin.listUsers();
+    
+    if (listError) {
+      return c.json({ error: 'Failed to list users', details: listError.message }, 500);
+    }
+
+    const results = [];
+    
+    for (const email of demoEmails) {
+      const authUser = authUsers?.users?.find((u: any) => u.email === email);
+      const allProfiles = await kv.getByPrefix(`user:`) || [];
+      const profile = allProfiles.find((p: any) => p.email === email);
+      
+      results.push({
+        email,
+        inAuth: !!authUser,
+        authUserId: authUser?.id || null,
+        emailConfirmed: authUser?.email_confirmed_at ? true : false,
+        authMetadata: authUser?.user_metadata || null,
+        inKVStore: !!profile,
+        profileRole: profile?.role || null,
+        profileId: profile?.id || null,
+      });
+    }
+
+    return c.json({ 
+      message: 'Demo users diagnostic',
+      results,
+      totalAuthUsers: authUsers?.users?.length || 0,
+    });
+  } catch (error) {
+    console.error('Diagnostic error:', error);
+    return c.json({ error: 'Failed to diagnose users', details: String(error) }, 500);
+  }
+});
+
 // ===== INITIALIZE DEMO USERS =====
 app.post("/make-server-2c39c550/init-demo-users", async (c) => {
   try {
@@ -85,103 +130,83 @@ app.post("/make-server-2c39c550/init-demo-users", async (c) => {
 
     for (const user of demoUsers) {
       try {
-        // Check if user exists in Supabase Auth by email
-        const { data: authUsers, error: listError } = await supabase.auth.admin.listUsers();
-        
-        let existingAuthUser = null;
-        if (!listError && authUsers?.users) {
-          existingAuthUser = authUsers.users.find((u: any) => u.email === user.email);
-        }
+        // Attempt to create the user directly
+        const { data, error } = await supabase.auth.admin.createUser({
+          email: user.email,
+          password: user.password,
+          email_confirm: true,
+          user_metadata: { 
+            name: user.name,
+            role: user.role, // Store role in user_metadata for reference
+          },
+        });
 
-        // Check if profile exists in KV store
-        const allProfiles = await kv.getByPrefix(`user:`) || [];
-        const existingProfile = allProfiles.find((profile: any) => profile.email === user.email);
-
-        if (existingAuthUser) {
-          // User exists in Supabase Auth
-          const userId = existingAuthUser.id;
-          
-          // Update password to ensure it matches
-          try {
-            await supabase.auth.admin.updateUserById(userId, {
-              password: user.password,
-              email_confirm: true, // Ensure email is confirmed
-            });
-          } catch (updateError) {
-            console.log(`Warning: Could not update password for ${user.email}:`, updateError);
-          }
-
-          // Check if profile exists in KV store
-          if (!existingProfile) {
-            // Create profile in KV store
-            const { password, ...profileData } = user;
-            const profile = {
-              id: userId,
-              ...profileData,
-              createdAt: new Date().toISOString(),
-            };
-            await kv.set(`user:${userId}`, profile);
-            results.push({ email: user.email, status: 'profile_created', userId });
-          } else {
-            // Update profile to ensure it matches
-            const { password, ...profileData } = user;
-            const profile = {
-              id: userId,
-              ...existingProfile, // Keep existing data
-              ...profileData, // Update with demo data
-              id: userId, // Ensure ID matches
-            };
-            await kv.set(`user:${userId}`, profile);
-            results.push({ email: user.email, status: 'updated', userId });
-          }
-        } else {
-          // User doesn't exist in Supabase Auth, create new user
-          const { data, error } = await supabase.auth.admin.createUser({
-            email: user.email,
-            password: user.password,
-            email_confirm: true, // Auto-confirm email
-            user_metadata: { name: user.name },
-          });
-
-          if (error) {
-            // If user already exists (race condition), try to get it
-            if (error.message.includes('already registered')) {
-              const { data: authUsers2 } = await supabase.auth.admin.listUsers();
-              const existingUser = authUsers2?.users?.find((u: any) => u.email === user.email);
-              if (existingUser) {
-                // Update password and create/update profile
-                await supabase.auth.admin.updateUserById(existingUser.id, {
-                  password: user.password,
-                  email_confirm: true,
-                });
-                const { password, ...profileData } = user;
-                const profile = {
-                  id: existingUser.id,
-                  ...profileData,
-                  createdAt: new Date().toISOString(),
-                };
-                await kv.set(`user:${existingUser.id}`, profile);
-                results.push({ email: user.email, status: 'created_after_race', userId: existingUser.id });
-                continue;
-              }
+        if (error) {
+          if (error.message.includes('already registered') || error.message.includes('already exists')) {
+            // User exists, so we'll update them
+            // listUsers() doesn't accept email parameter, we need to get all users and filter
+            const { data: usersResponse, error: listError } = await supabase.auth.admin.listUsers();
+            
+            if (listError) {
+              console.error(`Error listing users for ${user.email}:`, listError);
+              throw new Error(`Failed to list users: ${listError.message}`);
             }
-            console.log(`Error creating user ${user.email}:`, error.message);
-            results.push({ email: user.email, status: 'error', error: error.message });
-            continue;
-          }
+            
+            if (!usersResponse || !usersResponse.users) {
+              throw new Error(`No users found in response`);
+            }
+            
+            // Find user by email
+            const existingUser = usersResponse.users.find((u: any) => u.email === user.email);
+            
+            if (!existingUser) {
+              throw new Error(`User ${user.email} exists but could not be found in user list.`);
+            }
+            
+            // Update password and ensure email is confirmed
+            const { error: updateError } = await supabase.auth.admin.updateUserById(existingUser.id, {
+              password: user.password,
+              email_confirm: true,
+              user_metadata: {
+                ...existingUser.user_metadata,
+                name: user.name,
+                role: user.role, // Ensure role is in metadata
+              },
+            });
+            
+            if (updateError) {
+              console.error(`Error updating user ${user.email}:`, updateError);
+              // Continue anyway - password might already be correct
+            } else {
+              console.log(`Successfully updated user ${user.email} (${user.role})`);
+            }
 
-          if (data.user) {
-            // Store user profile in KV store
+            // Create or update profile in KV store
             const { password, ...profileData } = user;
             const profile = {
-              id: data.user.id,
+              id: existingUser.id,
               ...profileData,
               createdAt: new Date().toISOString(),
             };
+            await kv.set(`user:${existingUser.id}`, profile);
+            results.push({ email: user.email, status: 'updated', userId: existingUser.id });
 
-            await kv.set(`user:${data.user.id}`, profile);
-            results.push({ email: user.email, status: 'created', userId: data.user.id });
+          } else {
+            // Another error occurred
+            console.error(`Error creating user ${user.email}:`, error);
+            throw error;
           }
+        } else if (data.user) {
+          // User was created successfully
+          const { password, ...profileData } = user;
+          const profile = {
+            id: data.user.id,
+            ...profileData,
+            createdAt: new Date().toISOString(),
+          };
+          await kv.set(`user:${data.user.id}`, profile);
+          console.log(`Successfully created user ${user.email} (${user.role}) with ID: ${data.user.id}`);
+          results.push({ email: user.email, status: 'created', userId: data.user.id });
         }
       } catch (err) {
         console.error(`Error processing user ${user.email}:`, err);

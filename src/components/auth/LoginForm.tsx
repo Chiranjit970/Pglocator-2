@@ -49,8 +49,26 @@ export default function LoginForm({ role, onSwitchToSignup, onForgotPassword, on
       if (response.ok) {
         const result = await response.json();
         console.log('Demo users initialization:', result);
-        toast.success('Demo credentials filled! Users are ready.');
+        
+        // Check if admin user was initialized successfully
+        if (role === 'admin') {
+          const adminResult = result.results?.find((r: any) => r.email === 'teststuff677@gmail.com');
+          if (adminResult) {
+            console.log('Admin user status:', adminResult);
+            if (adminResult.status === 'error') {
+              toast.warning(`Admin user initialization had issues: ${adminResult.error || 'Unknown error'}`);
+            } else {
+              toast.success('Demo credentials filled! Admin user is ready.');
+            }
+          } else {
+            toast.info('Demo credentials filled! Admin user may need initialization.');
+          }
+        } else {
+          toast.success('Demo credentials filled! Users are ready.');
+        }
       } else {
+        const errorText = await response.text();
+        console.error('Failed to initialize demo users:', errorText);
         toast.info('Demo credentials filled! If login fails, wait a moment and try again.');
       }
     } catch (error) {
@@ -98,7 +116,18 @@ export default function LoginForm({ role, onSwitchToSignup, onForgotPassword, on
         // Provide helpful error messages
         let errorMessage = error.message;
         if (error.message.includes('Invalid login credentials') || error.message.includes('Invalid credentials')) {
-          errorMessage = 'Invalid email or password. If using demo credentials, please wait a few seconds for initialization to complete.';
+          // For admin, provide more specific guidance
+          if (role === 'admin') {
+            errorMessage = 'Invalid email or password. For admin: Ensure the account exists and password is "akash97". Try clicking "Quick Fill Demo" again to reinitialize.';
+            console.error('Admin login failed:', {
+              email,
+              role,
+              error: error.message,
+              suggestion: 'Check if admin user exists in Supabase Auth',
+            });
+          } else {
+            errorMessage = 'Invalid email or password. If using demo credentials, please wait a few seconds for initialization to complete.';
+          }
         } else if (error.message.includes('Email not confirmed')) {
           errorMessage = 'Please check your email to confirm your account.';
         }
@@ -126,10 +155,22 @@ export default function LoginForm({ role, onSwitchToSignup, onForgotPassword, on
           
           // Verify role matches
           if (profile.role !== role) {
-            toast.error(`This account is registered as ${profile.role}, not ${role}`);
+            const errorMsg = `This account is registered as ${profile.role}, not ${role}. Please select the correct role.`;
+            console.error('Role mismatch:', { expected: role, actual: profile.role, profile });
+            toast.error(errorMsg);
             await supabase.auth.signOut();
             setIsLoading(false);
             return;
+          }
+          
+          // Additional logging for admin
+          if (role === 'admin') {
+            console.log('Admin login successful:', {
+              userId: profile.id,
+              email: profile.email,
+              role: profile.role,
+              name: profile.name,
+            });
           }
 
           // Update user in store
