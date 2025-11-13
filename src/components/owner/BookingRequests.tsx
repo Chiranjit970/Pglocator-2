@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, CheckCircle, XCircle, Clock, User, Home, Calendar } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 
@@ -31,30 +31,42 @@ interface Booking {
 }
 
 export default function BookingRequests({ onBack }: BookingRequestsProps) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [allBookings, setAllBookings] = useState<{ [key: string]: Booking[] }>({
+    pending: [],
+    approved: [],
+    declined: [],
+  });
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'declined'>('pending');
   const [isLoading, setIsLoading] = useState(true);
   const { accessToken } = useAuthStore();
 
   useEffect(() => {
-    fetchBookings();
+    fetchAllBookings();
   }, []);
 
-  const fetchBookings = async () => {
+  const fetchAllBookings = async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
+      const statuses: ('pending' | 'approved' | 'declined')[] = ['pending', 'approved', 'declined'];
+      const bookingPromises = statuses.map(status =>
+        fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings?status=${status}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        ).then(res => res.json())
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        setBookings(data);
-      }
+      const results = await Promise.all(bookingPromises);
+      
+      setAllBookings({
+        pending: results[0] || [],
+        approved: results[1] || [],
+        declined: results[2] || [],
+      });
+
     } catch (error) {
       console.error('Error fetching bookings:', error);
       toast.error('Failed to load bookings');
@@ -77,7 +89,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
 
       if (response.ok) {
         toast.success('Booking approved successfully');
-        fetchBookings();
+        fetchAllBookings(); // Refetch all bookings
       } else {
         toast.error('Failed to approve booking');
       }
@@ -105,7 +117,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
 
       if (response.ok) {
         toast.success('Booking declined');
-        fetchBookings();
+        fetchAllBookings(); // Refetch all bookings
       } else {
         toast.error('Failed to decline booking');
       }
@@ -115,7 +127,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
     }
   };
 
-  const filteredBookings = bookings.filter(b => b.status === activeTab);
+  const filteredBookings = allBookings[activeTab] || [];
 
   if (isLoading) {
     return (
@@ -151,10 +163,10 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
               : 'bg-white text-stone-600 hover:bg-stone-50 border border-stone-200'
           }`}
         >
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Pending ({bookings.filter(b => b.status === 'pending').length})
-          </div>
+<div className="flex items-center gap-2">
+  <Clock className="w-5 h-5" />
+  Pending ({allBookings.pending.length})
+</div>
         </button>
         <button
           onClick={() => setActiveTab('approved')}
@@ -164,10 +176,10 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
               : 'bg-white text-stone-600 hover:bg-stone-50 border border-stone-200'
           }`}
         >
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5" />
-            Approved ({bookings.filter(b => b.status === 'approved').length})
-          </div>
+<div className="flex items-center gap-2">
+  <CheckCircle className="w-5 h-5" />
+  Approved ({allBookings.approved.length})
+</div>
         </button>
         <button
           onClick={() => setActiveTab('declined')}
@@ -177,10 +189,10 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
               : 'bg-white text-stone-600 hover:bg-stone-50 border border-stone-200'
           }`}
         >
-          <div className="flex items-center gap-2">
-            <XCircle className="w-5 h-5" />
-            Declined ({bookings.filter(b => b.status === 'declined').length})
-          </div>
+<div className="flex items-center gap-2">
+  <XCircle className="w-5 h-5" />
+  Declined ({allBookings.declined.length})
+</div>
         </button>
       </div>
 

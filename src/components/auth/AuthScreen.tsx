@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Toaster } from 'sonner@2.0.3';
+import { Toaster } from 'sonner';
 import AuthLayout from './AuthLayout';
 import LoginForm from './LoginForm';
 import SignupForm from './SignupForm';

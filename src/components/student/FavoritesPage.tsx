@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { Heart, MapPin, Star, ArrowLeft, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import PGDetailsModal from './PGDetailsModal';
 
 interface PG {
@@ -61,7 +61,7 @@ export default function FavoritesPage({ onBack }: FavoritesPageProps) {
     }
   };
 
-  const removeFavorite = async (pgId: string, e: React.MouseEvent) => {
+  const removeFavorite = async (pgId: string, e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
 
     try {
@@ -140,7 +140,7 @@ export default function FavoritesPage({ onBack }: FavoritesPageProps) {
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {favorites.map((pg, index) => (
+              {favorites.map((pg: PG, index: number) => (
                 <motion.div
                   key={pg.id}
                   className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer group"

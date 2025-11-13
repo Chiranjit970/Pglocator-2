@@ -1,8 +1,20 @@
-import { Hono } from "npm:hono";
-import { cors } from "npm:hono/cors";
-import { logger } from "npm:hono/logger";
-import { createClient } from "npm:@supabase/supabase-js";
-import * as kv from "./kv_store.tsx";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import { createClient } from "@supabase/supabase-js";
+import * as kv from "./kv_store";
+
+// Provide loose Deno typing for local type-checking
+declare const Deno: any;
+
+// Helper to safely read values set on the Hono context without strict generic errors
+function getCtxValue<T = any>(c: any, key: string): T | null {
+  try {
+    return ((c as any).get ? (c as any).get(key) : null) as T | null;
+  } catch (e) {
+    return null;
+  }
+}
 
 const app = new Hono();
 

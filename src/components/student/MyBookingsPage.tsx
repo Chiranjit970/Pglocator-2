@@ -4,10 +4,12 @@ import { BookmarkCheck, ArrowLeft, MapPin, Calendar, DollarSign, Download, Star 
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { createClient } from '../../utils/supabase/client'; // Import Supabase client
 
 interface Booking {
   id: string;
+  userId: string;
   pgId: string;
   roomType: string;
   checkIn: string;
@@ -30,7 +32,7 @@ interface MyBookingsPageProps {
 }
 
 export default function MyBookingsPage({ onBack }: MyBookingsPageProps) {
-  const { accessToken } = useAuthStore();
+  const { accessToken, user } = useAuthStore();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -39,10 +41,47 @@ export default function MyBookingsPage({ onBack }: MyBookingsPageProps) {
     rating: 5,
     comment: '',
   });
+  const supabase = createClient(); // Initialize Supabase client
 
   useEffect(() => {
     fetchBookings();
-  }, []);
+
+    if (!user?.id) return; // Ensure user is logged in
+
+    // Subscribe to real-time changes in the 'bookings' table
+    const channel = supabase
+      .channel('my_bookings_channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen for all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: `kv_store_${projectId}`, // Dynamically use projectId for table name
+        },
+        (payload) => {
+          console.log('Realtime payload (student):', payload);
+          // Check if the change is relevant to a booking and the current user
+          const newRecord = payload.new as { key: string; value: Booking };
+          const oldRecord = payload.old as { key: string; value: Booking };
+
+          const relevantRecord = newRecord || oldRecord;
+
+          if (relevantRecord && relevantRecord.key.startsWith('booking:')) {
+            // Check if the booking belongs to the current user
+            if (relevantRecord.value.userId === user.id) {
+              console.log('Relevant booking change for student, refetching bookings.');
+              fetchBookings();
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on component unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]); // Re-subscribe if user ID changes
 
   const fetchBookings = async () => {
     if (!accessToken) return;
@@ -150,8 +189,9 @@ Thank you for using PG Locator!
     }
   };
 
-  const activeBookings = bookings.filter((b) => b.status === 'confirmed');
-  const pastBookings = bookings.filter((b) => b.status !== 'confirmed');
+  const pendingBookings = bookings.filter((b: Booking) => b.status === 'pending');
+  const activeBookings = bookings.filter((b: Booking) => b.status === 'approved');
+  const pastBookings = bookings.filter((b: Booking) => b.status === 'declined' || b.status === 'completed');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-stone-50 to-amber-50">
@@ -203,12 +243,60 @@ Thank you for using PG Locator!
           </motion.div>
         ) : (
           <div className="space-y-8">
+            {/* Pending Bookings */}
+            {pendingBookings.length > 0 && (
+              <div>
+                <h3 className="text-stone-900 mb-4">Pending Bookings ({pendingBookings.length})</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {pendingBookings.map((booking: Booking, index: number) => (
+                    <motion.div
+                      key={booking.id}
+                      className="bg-white rounded-2xl overflow-hidden shadow-lg"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <div className="relative h-40">
+                        <ImageWithFallback
+                          src={booking.pg.images[0]}
+                          alt={booking.pg.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-3 right-3 px-3 py-1 bg-amber-100 text-amber-700 rounded-full">
+                          Pending
+                        </div>
+                      </div>
+
+                      <div className="p-6">
+                        <h4 className="text-stone-900 mb-2">{booking.pg.name}</h4>
+                        <div className="flex items-center gap-2 text-stone-600 mb-4">
+                          <MapPin className="w-4 h-4" />
+                          <span>{booking.pg.location}</span>
+                        </div>
+
+                        <div className="space-y-2 mb-4 text-stone-600">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4" />
+                            <span>Check-in: {new Date(booking.checkIn).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4" />
+                            <span>₹{booking.totalAmount} ({booking.duration} months)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Active Bookings */}
             {activeBookings.length > 0 && (
               <div>
                 <h3 className="text-stone-900 mb-4">Active Bookings ({activeBookings.length})</h3>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {activeBookings.map((booking, index) => (
+                  {activeBookings.map((booking: Booking, index: number) => (
                     <motion.div
                       key={booking.id}
                       className="bg-white rounded-2xl overflow-hidden shadow-lg"
@@ -223,7 +311,7 @@ Thank you for using PG Locator!
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute top-3 right-3 px-3 py-1 bg-green-500 text-white rounded-full">
-                          Active
+                          Approved
                         </div>
                       </div>
 
@@ -276,7 +364,7 @@ Thank you for using PG Locator!
               <div>
                 <h3 className="text-stone-900 mb-4">Past Bookings ({pastBookings.length})</h3>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {pastBookings.map((booking, index) => (
+                  {pastBookings.map((booking: Booking, index: number) => (
                     <motion.div
                       key={booking.id}
                       className="bg-white rounded-2xl overflow-hidden shadow-lg opacity-70"
@@ -290,6 +378,9 @@ Thank you for using PG Locator!
                           alt={booking.pg.name}
                           className="w-full h-full object-cover grayscale"
                         />
+                        <div className={`absolute top-3 right-3 px-3 py-1 ${booking.status === 'declined' ? 'bg-red-500' : 'bg-stone-500'} text-white rounded-full`}>
+                          {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                        </div>
                       </div>
 
                       <div className="p-6">
@@ -300,7 +391,7 @@ Thank you for using PG Locator!
                         </div>
 
                         <div className="text-stone-500">
-                          Completed on {new Date(booking.createdAt).toLocaleDateString()}
+                          {booking.status === 'declined' ? 'Declined' : 'Completed'} on {new Date(booking.createdAt).toLocaleDateString()}
                         </div>
                       </div>
                     </motion.div>
@@ -326,7 +417,7 @@ Thank you for using PG Locator!
             <div className="mb-6">
               <label className="block text-stone-700 mb-2">Rating</label>
               <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((star) => (
+                {[1, 2, 3, 4, 5].map((star: number) => (
                   <button
                     key={star}
                     onClick={() => setReviewData({ ...reviewData, rating: star })}

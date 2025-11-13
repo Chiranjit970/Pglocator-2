@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Toaster } from 'sonner@2.0.3';
+import { Toaster } from 'sonner';
 import SplashScreen from './components/SplashScreen';
 import OnboardingScreen from './components/OnboardingScreen';
 import AuthScreen from './components/auth/AuthScreen';
@@ -24,8 +24,54 @@ export default function App() {
   console.log('App render - appState:', appState, 'user:', user?.role, user?.name);
 
   useEffect(() => {
-    initializeApp();
+    const supabase = createClient();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event);
+      if (event === 'SIGNED_OUT' || !session) {
+        setUser(null);
+        setAccessToken(null);
+        setIsLoading(false);
+        const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
+        setAppState(hasSeenOnboarding ? 'onboarding' : 'splash');
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        setAccessToken(session.access_token);
+        try {
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/profile`,
+            {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const profile = await response.json();
+            setUser(profile);
+            localStorage.setItem('userRole', profile.role);
+            setSelectedRole(profile.role);
+            setAppState('app');
+          } else {
+            // If profile fetch fails, sign out user
+            await supabase.auth.signOut();
+          }
+        } catch (error) {
+          console.error('Error fetching profile:', error);
+          await supabase.auth.signOut();
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    });
+
     initializeData();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Watch for user changes after login

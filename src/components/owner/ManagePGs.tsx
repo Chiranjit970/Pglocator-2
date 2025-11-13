@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, Edit, Trash2, Eye, Search, Filter } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 

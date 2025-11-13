@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, MapPin, Star, Wifi, Wind, Utensils, Shirt, Shield, BookOpen, Dumbbell, Phone, Mail, Calendar } from 'lucide-react';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface PG {
   id: string;
@@ -65,7 +65,12 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
   const fetchReviews = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/pgs/${pg.id}/reviews`
+        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/pgs/${pg.id}/reviews`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
       );
       if (response.ok) {
         const data = await response.json();
@@ -122,7 +127,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
 
       if (response.ok) {
         const result = await response.json();
-        toast.success('Booking confirmed successfully!');
+        toast.success('Booking request sent successfully!');
         setShowBooking(false);
         onClose();
       } else {
@@ -166,7 +171,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
             {/* Image navigation dots */}
             {pg.images.length > 1 && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                {pg.images.map((_, index) => (
+                {pg.images.map((_: string, index: number) => (
                   <button
                     key={index}
                     onClick={() => setCurrentImageIndex(index)}
@@ -227,7 +232,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
             <div className="mb-6">
               <h3 className="text-stone-900 mb-4">Amenities</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {pg.amenities.map((amenity) => {
+                {pg.amenities.map((amenity: string) => {
                   const Icon = amenityIcons[amenity] || Wifi;
                   return (
                     <div
@@ -264,7 +269,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
               </h3>
               {reviews.length > 0 ? (
                 <div className="space-y-4">
-                  {reviews.slice(0, 3).map((review) => (
+                  {reviews.slice(0, 3).map((review: any) => (
                     <div key={review.id} className="p-4 bg-stone-50 rounded-xl">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-stone-900">{review.userName}</span>
@@ -306,7 +311,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
                     <label className="block text-stone-700 mb-2">Room Type</label>
                     <select
                       value={bookingData.roomType}
-                      onChange={(e) =>
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
                         setBookingData({ ...bookingData, roomType: e.target.value })
                       }
                       className="w-full px-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -325,7 +330,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
                         <input
                           type="date"
                           value={bookingData.checkIn}
-                          onChange={(e) =>
+                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
                             setBookingData({ ...bookingData, checkIn: e.target.value })
                           }
                           className="w-full pl-10 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -340,7 +345,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
                         <input
                           type="date"
                           value={bookingData.checkOut}
-                          onChange={(e) =>
+                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
                             setBookingData({ ...bookingData, checkOut: e.target.value })
                           }
                           className="w-full pl-10 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"

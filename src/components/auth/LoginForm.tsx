@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { createClient } from '../../utils/supabase/client';
 import { useAuthStore } from '../../store/authStore';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
 interface LoginFormProps {

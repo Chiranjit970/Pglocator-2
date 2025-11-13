@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent, MouseEvent } from 'react';
 import { motion } from 'motion/react';
-import { Search, SlidersHorizontal, MapPin, Star, Heart, LogOut, User, BookmarkCheck, RefreshCw } from 'lucide-react';
+import { Search, SlidersHorizontal, MapPin, Star, Heart, LogOut, User, BookmarkCheck, RefreshCw, Bell } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import PGDetailsModal from './PGDetailsModal';
 import FavoritesPage from './FavoritesPage';
 import MyBookingsPage from './MyBookingsPage';
+// import Notifications from './Notifications';
 
 interface PG {
   id: string;
@@ -22,6 +23,8 @@ interface PG {
   rating: number;
   reviews: number;
   verified: boolean;
+  ownerName: string;
+  ownerPhone: string;
 }
 
 export default function StudentHome() {
@@ -34,6 +37,7 @@ export default function StudentHome() {
   const [selectedPG, setSelectedPG] = useState<PG | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState<'home' | 'favorites' | 'bookings'>('home');
+  const [showNotifications, setShowNotifications] = useState(false);
   
   const [filters, setFilters] = useState({
     minPrice: 0,
@@ -60,10 +64,6 @@ export default function StudentHome() {
   }, [pgs, searchQuery, filters]);
 
   const fetchPGs = async () => {
-    if (!accessToken) {
-      setIsLoading(false);
-      return;
-    }
     try {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/pgs`,
@@ -77,11 +77,7 @@ export default function StudentHome() {
         const data = await response.json();
         setPgs(data);
       } else {
-        if (response.status === 401) {
-          toast.error('Authentication error. Please log in again.');
-        } else {
-          toast.error('Failed to load PG listings.');
-        }
+        toast.error('Failed to load PG listings.');
       }
     } catch (error) {
       console.error('Error fetching PGs:', error);
@@ -95,14 +91,14 @@ export default function StudentHome() {
     if (!accessToken) return;
     
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/favorites`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/favorites`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
       if (response.ok) {
         const data = await response.json();
         setFavorites(new Set(data.map((fav: PG) => fav.id)));
@@ -200,6 +196,7 @@ export default function StudentHome() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-stone-50 to-amber-50">
+      {/* showNotifications && <Notifications onClose={() => setShowNotifications(false)} /> */}
       {/* Header */}
       <motion.header
         className="bg-white border-b border-stone-200 sticky top-0 z-50 shadow-sm"
@@ -219,6 +216,13 @@ export default function StudentHome() {
           </div>
 
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setShowNotifications(true)}
+              className="p-2 hover:bg-stone-100 rounded-lg transition-colors relative"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5 h-5 text-stone-600" />
+            </button>
             <button
               onClick={() => setCurrentPage('favorites')}
               className="p-2 hover:bg-stone-100 rounded-lg transition-colors relative"
@@ -264,7 +268,7 @@ export default function StudentHome() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                 placeholder="Search by name or location..."
                 className="w-full pl-12 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
@@ -307,7 +311,7 @@ export default function StudentHome() {
                     <input
                       type="number"
                       value={filters.minPrice}
-                      onChange={(e) =>
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
                         setFilters({ ...filters, minPrice: parseInt(e.target.value) || 0 })
                       }
                       className="w-full px-3 py-2 border border-stone-300 rounded-lg"
@@ -317,7 +321,7 @@ export default function StudentHome() {
                     <input
                       type="number"
                       value={filters.maxPrice}
-                      onChange={(e) =>
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
                         setFilters({ ...filters, maxPrice: parseInt(e.target.value) || 20000 })
                       }
                       className="w-full px-3 py-2 border border-stone-300 rounded-lg"
@@ -330,7 +334,7 @@ export default function StudentHome() {
                   <label className="block text-stone-700 mb-2">Gender</label>
                   <select
                     value={filters.gender}
-                    onChange={(e) => setFilters({ ...filters, gender: e.target.value })}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => setFilters({ ...filters, gender: e.target.value })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-lg"
                   >
                     <option value="">All</option>
@@ -343,7 +347,7 @@ export default function StudentHome() {
                 <div>
                   <label className="block text-stone-700 mb-2">Amenities</label>
                   <div className="flex flex-wrap gap-2">
-                    {['WiFi', 'AC', 'Meals', 'Laundry', 'Security'].map((amenity) => (
+                    {['WiFi', 'AC', 'Meals', 'Laundry', 'Security'].map((amenity: string) => (
                       <button
                         key={amenity}
                         onClick={() => {
@@ -377,7 +381,7 @@ export default function StudentHome() {
 
         {/* PG listings grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPgs.map((pg, index) => (
+          {filteredPgs.map((pg: PG, index: number) => (
             <motion.div
               key={pg.id}
               className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer group"
@@ -398,7 +402,7 @@ export default function StudentHome() {
 
                 {/* Favorite button */}
                 <button
-                  onClick={(e) => toggleFavorite(pg.id, e)}
+                  onClick={(e: MouseEvent<HTMLButtonElement>) => toggleFavorite(pg.id, e)}
                   className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full hover:scale-110 transition-transform"
                 >
                   <Heart

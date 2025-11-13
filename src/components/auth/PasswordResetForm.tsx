@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { createClient } from '../../utils/supabase/client';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface PasswordResetFormProps {
   onBack: () => void;
