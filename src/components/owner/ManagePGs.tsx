@@ -7,6 +7,7 @@ import { projectId } from '../../utils/supabase/info';
 
 interface ManagePGsProps {
   onBack: () => void;
+  onSelectPG?: (pgId: string) => void;
 }
 
 interface PG {
@@ -22,7 +23,7 @@ interface PG {
   images: string[];
 }
 
-export default function ManagePGs({ onBack }: ManagePGsProps) {
+export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
   const [pgs, setPgs] = useState<PG[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -244,13 +245,19 @@ export default function ManagePGs({ onBack }: ManagePGsProps) {
 
                   {/* Actions */}
                   <div className="flex gap-2">
-                    <button className="px-4 py-2 bg-stone-100 text-stone-700 rounded-lg hover:bg-stone-200 transition-colors flex items-center gap-2 text-sm">
+                    <button 
+                      onClick={() => onSelectPG?.(pg.id)}
+                      className="px-4 py-2 bg-stone-100 text-stone-700 rounded-lg hover:bg-stone-200 transition-colors flex items-center gap-2 text-sm"
+                    >
                       <Eye className="w-4 h-4" />
                       View
                     </button>
-                    <button className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-2 text-sm">
+                    <button 
+                      onClick={() => onSelectPG?.(pg.id)}
+                      className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-2 text-sm"
+                    >
                       <Edit className="w-4 h-4" />
-                      Edit
+                      Edit & Manage Rooms
                     </button>
                     <button
                       onClick={() => handleDelete(pg.id)}

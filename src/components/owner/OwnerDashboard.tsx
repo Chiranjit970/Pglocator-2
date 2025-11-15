@@ -19,11 +19,12 @@ import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import AddPGFlow from './AddPGFlow';
 import ManagePGs from './ManagePGs';
+import PGDetailsPage from './PGDetailsPage';
 import BookingRequests from './BookingRequests';
 import ReviewsManagement from './ReviewsManagement';
 import OwnerProfile from './OwnerProfile';
 
-type View = 'dashboard' | 'add-pg' | 'manage-pgs' | 'bookings' | 'reviews' | 'profile';
+type View = 'dashboard' | 'add-pg' | 'manage-pgs' | 'pg-details' | 'bookings' | 'reviews' | 'profile';
 
 interface Stats {
   totalPGs: number;
@@ -36,6 +37,7 @@ interface Stats {
 
 export default function OwnerDashboard() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [selectedPGId, setSelectedPGId] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats>({
     totalPGs: 0,
     totalBookings: 0,
@@ -86,7 +88,20 @@ export default function OwnerDashboard() {
           fetchStats();
         }} />;
       case 'manage-pgs':
-        return <ManagePGs onBack={() => setCurrentView('dashboard')} />;
+        return <ManagePGs 
+          onBack={() => setCurrentView('dashboard')} 
+          onSelectPG={(pgId) => {
+            setSelectedPGId(pgId);
+            setCurrentView('pg-details');
+          }}
+        />;
+      case 'pg-details':
+        return selectedPGId ? (
+          <PGDetailsPage 
+            pgId={selectedPGId}
+            onBack={() => setCurrentView('manage-pgs')}
+          />
+        ) : null;
       case 'bookings':
         return <BookingRequests onBack={() => setCurrentView('dashboard')} />;
       case 'reviews':

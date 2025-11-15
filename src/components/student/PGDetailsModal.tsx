@@ -1,12 +1,13 @@
 import { useState, useEffect, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, MapPin, Star, Wifi, Wind, Utensils, Shirt, Shield, BookOpen, Dumbbell, Phone, Mail, Calendar } from 'lucide-react';
+import { X, MapPin, Star, Wifi, Wind, Utensils, Shirt, Shield, BookOpen, Dumbbell, Phone, Mail, Calendar, AlertCircle } from 'lucide-react';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import { toast } from 'sonner';
+import { createClient } from '../../utils/supabase/client';
 
-import { PG, Review } from '../../types/pg';
+import { PG, Review, Room } from '../../types/pg';
 
 interface PGDetailsModalProps {
   pg: PG;
@@ -27,17 +28,47 @@ const amenityIcons: Record<string, any> = {
 export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
   const [showBooking, setShowBooking] = useState(false);
   const [bookingData, setBookingData] = useState({
-    roomType: 'single',
+    roomId: '',
     checkIn: '',
     checkOut: '',
   });
   const { accessToken } = useAuthStore();
+  const supabase = createClient();
 
   useEffect(() => {
     fetchReviews();
+    fetchAvailableRooms();
   }, []);
+
+  // Fetch only available rooms
+  const fetchAvailableRooms = async () => {
+    setRoomsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('pg_id', pg.id)
+        .eq('status', 'available')
+        .order('room_number', { ascending: true });
+
+      if (error) throw error;
+      setRooms(data || []);
+
+      // If no available rooms, show banner
+      if (!data || data.length === 0) {
+        console.log('No available rooms for this PG');
+      }
+    } catch (error) {
+      console.error('Error fetching rooms:', error);
+      toast.error('Failed to load available rooms');
+    } finally {
+      setRoomsLoading(false);
+    }
+  };
 
   const fetchReviews = async () => {
     try {
@@ -64,6 +95,11 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
       return;
     }
 
+    if (!bookingData.roomId) {
+      toast.error('Please select a room');
+      return;
+    }
+
     if (!bookingData.checkIn || !bookingData.checkOut) {
       toast.error('Please select check-in and check-out dates');
       return;
@@ -81,7 +117,14 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
       return;
     }
 
-    const totalAmount = pg.price * duration;
+    // Get selected room
+    const selectedRoom = rooms.find((r) => r.id === bookingData.roomId);
+    if (!selectedRoom) {
+      toast.error('Selected room not found');
+      return;
+    }
+
+    const totalAmount = selectedRoom.rent * duration;
 
     try {
       const response = await fetch(
@@ -94,7 +137,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
           },
           body: JSON.stringify({
             pgId: pg.id,
-            roomType: bookingData.roomType,
+            roomType: selectedRoom.type,
             checkIn: bookingData.checkIn,
             duration,
             totalAmount,
@@ -267,13 +310,64 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
               )}
             </div>
 
+            {/* Available Rooms */}
+            <div className="mb-6">
+              <h3 className="text-stone-900 mb-4">Available Rooms</h3>
+              {roomsLoading ? (
+                <div className="text-center py-6">
+                  <div className="w-8 h-8 border-4 border-amber-200 border-t-amber-600 rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-stone-500">Loading rooms...</p>
+                </div>
+              ) : rooms.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {rooms.map((room) => (
+                    <div key={room.id} className="p-4 border border-stone-200 rounded-xl hover:border-amber-500 transition-colors">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-semibold text-stone-900">Room {room.room_number}</h4>
+                        <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                          Available
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm text-stone-600 mb-2">
+                        <p>📝 {room.type.charAt(0).toUpperCase() + room.type.slice(1)} room</p>
+                        <p>🚿 {room.bathroom_type === 'attached' ? 'Attached' : 'Common'} bathroom</p>
+                        <p>🛏️ {room.beds_available}/{room.beds_total} beds available</p>
+                        <p className="text-amber-700 font-semibold">₹{room.rent.toLocaleString()}/month</p>
+                      </div>
+                      {room.amenities && room.amenities.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {room.amenities.slice(0, 3).map((amenity) => (
+                            <span
+                              key={amenity}
+                              className="text-xs px-2 py-1 bg-stone-100 text-stone-700 rounded"
+                            >
+                              {amenity}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-xl flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-yellow-800 font-medium">This PG is currently full</p>
+                    <p className="text-yellow-700 text-sm">All rooms are booked. Check back soon!</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Booking section */}
             {!showBooking ? (
               <button
                 onClick={() => setShowBooking(true)}
-                className="w-full py-4 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+                disabled={rooms.length === 0}
+                className="w-full py-4 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl hover:shadow-lg transition-all duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                Book Now
+                {rooms.length === 0 ? 'No Available Rooms' : 'Book Now'}
               </button>
             ) : (
               <motion.div
@@ -283,54 +377,68 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
               >
                 <h3 className="text-stone-900 mb-4">Booking Details</h3>
                 
-                <div className="space-y-4 mb-6">
-                  <div>
-                    <label className="block text-stone-700 mb-2">Room Type</label>
-                    <select
-                      value={bookingData.roomType}
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                        setBookingData({ ...bookingData, roomType: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    >
-                      <option value="single">Single Room</option>
-                      <option value="double">Double Sharing</option>
-                      <option value="triple">Triple Sharing</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+                {rooms.length === 0 ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex gap-3 mb-4">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
                     <div>
-                      <label className="block text-stone-700 mb-2">Check-in Date</label>
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
-                        <input
-                          type="date"
-                          value={bookingData.checkIn}
-                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                            setBookingData({ ...bookingData, checkIn: e.target.value })
-                          }
-                          className="w-full pl-10 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-stone-700 mb-2">Check-out Date</label>
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
-                        <input
-                          type="date"
-                          value={bookingData.checkOut}
-                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                            setBookingData({ ...bookingData, checkOut: e.target.value })
-                          }
-                          className="w-full pl-10 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
-                        />
-                      </div>
+                      <p className="text-yellow-800 font-medium">This PG is currently full</p>
+                      <p className="text-yellow-700 text-sm">All rooms are booked. Check back soon!</p>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-4 mb-6">
+                    <div>
+                      <label className="block text-stone-700 mb-2">Select Room *</label>
+                      <select
+                        value={bookingData.roomId}
+                        onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                          setBookingData({ ...bookingData, roomId: e.target.value })
+                        }
+                        className="w-full px-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">Choose a room...</option>
+                        {rooms.map((room) => (
+                          <option key={room.id} value={room.id}>
+                            Room {room.room_number} - {room.type} ({room.beds_available}/{room.beds_total} beds) -
+                            ₹{room.rent}/month
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-stone-700 mb-2">Check-in Date</label>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                          <input
+                            type="date"
+                            value={bookingData.checkIn}
+                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                              setBookingData({ ...bookingData, checkIn: e.target.value })
+                            }
+                            className="w-full pl-10 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-stone-700 mb-2">Check-out Date</label>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                          <input
+                            type="date"
+                            value={bookingData.checkOut}
+                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                              setBookingData({ ...bookingData, checkOut: e.target.value })
+                            }
+                            className="w-full pl-10 pr-4 py-3 bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-3">
                   <button
@@ -339,12 +447,14 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
                   >
                     Cancel
                   </button>
-                  <button
-                    onClick={handleBooking}
-                    className="flex-1 py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl hover:shadow-lg transition-all"
-                  >
-                    Confirm Booking
-                  </button>
+                  {rooms.length > 0 && (
+                    <button
+                      onClick={handleBooking}
+                      className="flex-1 py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl hover:shadow-lg transition-all"
+                    >
+                      Confirm Booking
+                    </button>
+                  )}
                 </div>
               </motion.div>
             )}

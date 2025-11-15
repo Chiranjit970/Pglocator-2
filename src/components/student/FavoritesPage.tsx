@@ -5,9 +5,8 @@ import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { toast } from 'sonner';
-import PGDetailsModal from './PGDetailsModal';
-
 import { PG } from '../../types/pg';
+import PGDetailsModal from './PGDetailsModal';
 
 interface FavoritesPageProps {
   onBack: () => void;

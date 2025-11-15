@@ -36,3 +36,38 @@ export interface Notification {
   relatedBookingId?: string;
   relatedPGId?: string;
 }
+
+export interface Amenity {
+  id: string;
+  name: string;
+  icon?: string;
+  category?: string;
+}
+
+export interface Room {
+  id: string;
+  pg_id: string;
+  room_number: string;
+  type: 'single' | 'double' | 'triple' | 'quad';
+  bathroom_type: 'attached' | 'common';
+  rent: number;
+  beds_total: number;
+  beds_available: number;
+  amenities: string[]; // amenity IDs
+  status: 'available' | 'booked' | 'maintenance';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Booking {
+  id: string;
+  pg_id: string;
+  room_id: string;
+  user_id: string;
+  check_in: string;
+  duration: number;
+  total_amount: number;
+  status: 'pending' | 'approved' | 'confirmed' | 'declined' | 'completed';
+  created_at: string;
+  updated_at: string;
+}
