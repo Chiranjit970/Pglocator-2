@@ -8,24 +8,9 @@ import { toast } from 'sonner';
 import PGDetailsModal from './PGDetailsModal';
 import FavoritesPage from './FavoritesPage';
 import MyBookingsPage from './MyBookingsPage';
-// import Notifications from './Notifications';
+import NotificationPanel from './NotificationPanel';
 
-interface PG {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  location: string;
-  distance: number;
-  gender: string;
-  images: string[];
-  amenities: string[];
-  rating: number;
-  reviews: number;
-  verified: boolean;
-  ownerName: string;
-  ownerPhone: string;
-}
+import { PG, Notification } from '../../types/pg';
 
 export default function StudentHome() {
   const { user, accessToken, logout } = useAuthStore();
@@ -38,6 +23,9 @@ export default function StudentHome() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState<'home' | 'favorites' | 'bookings'>('home');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   
   const [filters, setFilters] = useState({
     minPrice: 0,
@@ -58,6 +46,24 @@ export default function StudentHome() {
     
     return () => clearInterval(refreshInterval);
   }, []);
+
+  // Fetch notifications only when panel is open
+  useEffect(() => {
+    if (!showNotifications) return;
+    
+    // Fetch immediately when panel opens
+    fetchNotifications();
+    
+    // Then refresh every 30 seconds while panel is open (to reduce server load)
+    // Only keep polling if there are unread notifications
+    const notificationInterval = setInterval(() => {
+      if (unreadCount > 0) {
+        fetchNotifications();
+      }
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(notificationInterval);
+  }, [showNotifications, unreadCount]);
 
   useEffect(() => {
     applyFilters();
@@ -105,6 +111,32 @@ export default function StudentHome() {
       }
     } catch (error) {
       console.error('Error fetching favorites:', error);
+    }
+  };
+
+  const fetchNotifications = async () => {
+    if (!accessToken) return;
+    
+    setNotificationsLoading(true);
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/notifications`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setNotifications(data || []);
+        const unread = (data || []).filter((n: any) => !n.read).length;
+        setUnreadCount(unread);
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setNotificationsLoading(false);
     }
   };
 
@@ -222,6 +254,11 @@ export default function StudentHome() {
               aria-label="Notifications"
             >
               <Bell className="w-5 h-5 text-stone-600" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setCurrentPage('favorites')}
@@ -471,6 +508,15 @@ export default function StudentHome() {
       {/* PG Details Modal */}
       {selectedPG && (
         <PGDetailsModal pg={selectedPG} onClose={() => setSelectedPG(null)} />
+      )}
+
+      {/* Notification Panel */}
+      {showNotifications && (
+        <NotificationPanel 
+          notifications={notifications}
+          onClose={() => setShowNotifications(false)}
+          isLoading={notificationsLoading}
+        />
       )}
     </div>
   );

@@ -6,30 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
 import { toast } from 'sonner';
 
-interface PG {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  location: string;
-  distance: number;
-  gender: string;
-  images: string[];
-  amenities: string[];
-  rating: number;
-  reviews: number;
-  verified: boolean;
-  ownerName: string;
-  ownerPhone: string;
-}
-
-interface Review {
-  id: string;
-  userName: string;
-  rating: number;
-  comment: string;
-  createdAt: string;
-}
+import { PG, Review } from '../../types/pg';
 
 interface PGDetailsModalProps {
   pg: PG;

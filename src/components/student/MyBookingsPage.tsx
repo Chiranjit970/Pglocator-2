@@ -150,6 +150,32 @@ Thank you for using PG Locator!
     toast.success('Invoice downloaded!');
   };
 
+  const handleDeleteBooking = async (bookingId: string) => {
+    if (!accessToken) return;
+
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/bookings/${bookingId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        setBookings((prevBookings) => prevBookings.filter((b) => b.id !== bookingId));
+        toast.success('Booking request deleted');
+      } else {
+        toast.error('Failed to delete booking request');
+      }
+    } catch (error) {
+      console.error('Error deleting booking:', error);
+      toast.error('Failed to delete booking request');
+    }
+  };
+
   const handleSubmitReview = async () => {
     if (!selectedBooking || !accessToken) return;
 
@@ -190,8 +216,14 @@ Thank you for using PG Locator!
   };
 
   const pendingBookings = bookings.filter((b: Booking) => b.status === 'pending');
-  const activeBookings = bookings.filter((b: Booking) => b.status === 'approved');
-  const pastBookings = bookings.filter((b: Booking) => b.status === 'declined' || b.status === 'completed');
+  const activeBookings = bookings.filter((b: Booking) => b.status === 'approved' || b.status === 'confirmed');
+  // Include both declined and completed statuses for past bookings
+  // Also include bookings that may be older and don't fit other categories
+  const pastBookings = bookings.filter((b: Booking) => {
+    const isOldBooking = b.status && (b.status === 'declined' || b.status === 'completed');
+    const isExpired = b.checkIn && new Date(b.checkIn) < new Date();
+    return isOldBooking || isExpired;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-stone-50 to-amber-50">
@@ -311,7 +343,7 @@ Thank you for using PG Locator!
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute top-3 right-3 px-3 py-1 bg-green-500 text-white rounded-full">
-                          Approved
+                          Confirmed
                         </div>
                       </div>
 
@@ -362,40 +394,64 @@ Thank you for using PG Locator!
             {/* Past Bookings */}
             {pastBookings.length > 0 && (
               <div>
-                <h3 className="text-stone-900 mb-4">Past Bookings ({pastBookings.length})</h3>
+                <h3 className="text-stone-900 mb-4">Booking History ({pastBookings.length})</h3>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {pastBookings.map((booking: Booking, index: number) => (
-                    <motion.div
-                      key={booking.id}
-                      className="bg-white rounded-2xl overflow-hidden shadow-lg opacity-70"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 0.7, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                    >
-                      <div className="relative h-40">
-                        <ImageWithFallback
-                          src={booking.pg.images[0]}
-                          alt={booking.pg.name}
-                          className="w-full h-full object-cover grayscale"
-                        />
-                        <div className={`absolute top-3 right-3 px-3 py-1 ${booking.status === 'declined' ? 'bg-red-500' : 'bg-stone-500'} text-white rounded-full`}>
-                          {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-                        </div>
-                      </div>
-
-                      <div className="p-6">
-                        <h4 className="text-stone-900 mb-2">{booking.pg.name}</h4>
-                        <div className="flex items-center gap-2 text-stone-600 mb-4">
-                          <MapPin className="w-4 h-4" />
-                          <span>{booking.pg.location}</span>
+                  {pastBookings.map((booking: Booking, index: number) => {
+                    const isExpired = booking.checkIn && new Date(booking.checkIn) < new Date();
+                    const statusLabel = booking.status === 'declined' ? 'Declined' : (isExpired ? 'Expired' : 'Completed');
+                    const statusColor = booking.status === 'declined' ? 'bg-red-500' : (isExpired ? 'bg-orange-500' : 'bg-stone-500');
+                    
+                    return (
+                      <motion.div
+                        key={booking.id}
+                        className="bg-white rounded-2xl overflow-hidden shadow-lg opacity-70"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 0.7, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                      >
+                        <div className="relative h-40">
+                          <ImageWithFallback
+                            src={booking.pg.images[0]}
+                            alt={booking.pg.name}
+                            className="w-full h-full object-cover grayscale"
+                          />
+                          <div className={`absolute top-3 right-3 px-3 py-1 ${statusColor} text-white rounded-full`}>
+                            {statusLabel}
+                          </div>
                         </div>
 
-                        <div className="text-stone-500">
-                          {booking.status === 'declined' ? 'Declined' : 'Completed'} on {new Date(booking.createdAt).toLocaleDateString()}
+                        <div className="p-6">
+                          <h4 className="text-stone-900 mb-2">{booking.pg.name}</h4>
+                          <div className="flex items-center gap-2 text-stone-600 mb-4">
+                            <MapPin className="w-4 h-4" />
+                            <span>{booking.pg.location}</span>
+                          </div>
+
+                          <div className="space-y-2 mb-4 text-stone-600">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4" />
+                              <span>Booked: {new Date(booking.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4" />
+                              <span>Check-in was: {new Date(booking.checkIn).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+
+                          {booking.status === 'declined' && (
+                            <div className="mt-4">
+                              <button
+                                onClick={() => handleDeleteBooking(booking.id)}
+                                className="w-full py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center justify-center gap-2"
+                              >
+                                Delete Request
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </div>
             )}

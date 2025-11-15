@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle, XCircle, Clock, User, Home, Calendar } from 'lu
 import { toast } from 'sonner';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
+import { createClient } from '../../utils/supabase/client';
 
 interface BookingRequestsProps {
   onBack: () => void;
@@ -17,7 +18,7 @@ interface Booking {
   checkIn: string;
   duration: number;
   totalAmount: number;
-  status: 'pending' | 'approved' | 'declined';
+  status: 'pending' | 'approved' | 'declined' | 'confirmed';
   createdAt: string;
   pg: {
     name: string;
@@ -38,35 +39,112 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
   });
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'declined'>('pending');
   const [isLoading, setIsLoading] = useState(true);
-  const { accessToken } = useAuthStore();
+  const { accessToken, user } = useAuthStore();
+  const supabase = createClient();
 
   useEffect(() => {
     fetchAllBookings();
-  }, []);
+
+    if (!user?.id) return;
+
+    // Subscribe to real-time changes
+    const channel = supabase
+      .channel('owner_bookings_channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: `kv_store_${projectId}`,
+        },
+        (payload) => {
+          console.log('Realtime payload (owner):', payload);
+          const newRecord = payload.new as { key: string; value: Booking };
+          const oldRecord = payload.old as { key: string; value: Booking };
+
+          const relevantRecord = newRecord || oldRecord;
+
+          // Check if this is a booking change
+          if (relevantRecord && relevantRecord.key.startsWith('booking:')) {
+            // Try incremental update first
+            const booking = newRecord?.value || oldRecord?.value;
+            if (booking) {
+              setAllBookings(prev => {
+                const updated = { ...prev };
+                
+                // Remove booking from all tabs
+                Object.keys(updated).forEach(tab => {
+                  updated[tab as keyof typeof updated] = updated[tab as keyof typeof updated].filter(b => b.id !== booking.id);
+                });
+                
+                // Add to correct tab based on status
+                if (booking.status) {
+                  let status: 'pending' | 'approved' | 'declined' = 'pending';
+                  if (booking.status === 'approved' || booking.status === 'confirmed') {
+                    status = 'approved';
+                  } else if (booking.status === 'declined') {
+                    status = 'declined';
+                  } else if (booking.status === 'pending') {
+                    status = 'pending';
+                  }
+                  
+                  if (['pending', 'approved', 'declined'].includes(status)) {
+                    // Insert at the beginning (newer bookings first)
+                    updated[status] = [booking, ...updated[status]];
+                  }
+                }
+                
+                return updated;
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, supabase, projectId]);
 
   const fetchAllBookings = async () => {
     setIsLoading(true);
     try {
-      const statuses: ('pending' | 'approved' | 'declined')[] = ['pending', 'approved', 'declined'];
-      const bookingPromises = statuses.map(status =>
-        fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings?status=${status}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        ).then(res => res.json())
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
       );
 
-      const results = await Promise.all(bookingPromises);
-      
-      setAllBookings({
-        pending: results[0] || [],
-        approved: results[1] || [],
-        declined: results[2] || [],
-      });
+      if (response.ok) {
+        const bookings = await response.json();
+        console.log('Fetched bookings from server:', bookings);
+        
+        // Organize bookings by status
+        // Handle both 'approved' and 'confirmed' statuses for backwards compatibility
+        const organized = {
+          pending: bookings.filter((b: Booking) => b.status === 'pending'),
+          approved: bookings.filter((b: Booking) => b.status === 'approved' || b.status === 'confirmed'),
+          declined: bookings.filter((b: Booking) => b.status === 'declined'),
+        };
 
+        // Sort each category by creation date (newest first)
+        Object.keys(organized).forEach(key => {
+          organized[key as keyof typeof organized].sort((a: Booking, b: Booking) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        });
+
+        console.log('Organized bookings:', organized);
+        setAllBookings(organized);
+      } else {
+        console.error('Failed to fetch bookings, status:', response.status);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+      }
     } catch (error) {
       console.error('Error fetching bookings:', error);
       toast.error('Failed to load bookings');
@@ -78,12 +156,14 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
   const handleApprove = async (bookingId: string) => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings/${bookingId}/approve`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings/${bookingId}`,
         {
-          method: 'POST',
+          method: 'PUT',
           headers: {
+            'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
+          body: JSON.stringify({ status: 'approved' }),
         }
       );
 
@@ -101,17 +181,18 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
 
   const handleDecline = async (bookingId: string) => {
     const reason = prompt('Please provide a reason for declining (optional):');
+    if (reason === null) return; // User cancelled
     
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings/${bookingId}/decline`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings/${bookingId}`,
         {
-          method: 'POST',
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ reason }),
+          body: JSON.stringify({ status: 'declined', reason }),
         }
       );
 
@@ -282,7 +363,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
                       className="flex-1 lg:flex-none px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2"
                     >
                       <CheckCircle className="w-5 h-5" />
-                      Approve
+                      Confirmed
                     </button>
                     <button
                       onClick={() => handleDecline(booking.id)}

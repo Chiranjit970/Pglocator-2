@@ -627,7 +627,7 @@ app.get("/user/favorites", requireAuth, async (c) => {
     const pgs = await Promise.all(pgPromises);
     
     // Only return verified and active PGs (students should only see verified favorites)
-    const verifiedPGs = pgs.filter(pg => 
+    const verifiedPGs = pgs.filter((pg: any) => 
       pg !== null && pg.verified === true && pg.active === true
     );
     
@@ -775,10 +775,19 @@ app.get("/user/bookings", requireAuth, async (c) => {
 
     // Fetch PG details for each booking and ensure selected room info is present
     const bookingsWithPG = await Promise.all(
-      bookings.filter(b => b !== null).map(async (booking: any) => {
+      bookings.filter((b: any) => b !== null).map(async (booking: any) => {
         // Try to get the latest PG data from KV; if not available, fall back to snapshot stored on booking
-        const pgFromStore = await kv.get(`pg:${booking.pgId}`) || null;
-        const pg = pgFromStore || booking.pgSnapshot || null;
+        let pg = await kv.get(`pg:${booking.pgId}`) || null;
+        
+        // If PG not in store, try to create a minimal PG object from pgSnapshot
+        if (!pg && booking.pgSnapshot) {
+          pg = booking.pgSnapshot;
+        }
+        
+        // If still no PG, try to get it from booking.pg (for backwards compatibility)
+        if (!pg && booking.pg) {
+          pg = booking.pg;
+        }
 
         // Ensure selectedRoom is present (try to resolve from current PG if missing)
         let selectedRoom = booking.selectedRoom || null;
@@ -786,9 +795,23 @@ app.get("/user/bookings", requireAuth, async (c) => {
           selectedRoom = pg.roomTypes.find((rt: any) => String(rt.type).toLowerCase() === String(booking.roomType).toLowerCase()) || null;
         }
 
-        return { ...booking, pg, selectedRoom };
+        return { 
+          ...booking, 
+          pg: pg || {
+            id: booking.pgId,
+            name: 'PG (Details not found)',
+            location: 'Location unknown',
+            images: [],
+            ownerName: 'Unknown',
+            ownerPhone: 'N/A',
+          }, 
+          selectedRoom 
+        };
       })
     );
+
+    // Sort bookings by creation date (newest first)
+    bookingsWithPG.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return c.json(bookingsWithPG);
   } catch (error) {
@@ -838,7 +861,7 @@ app.post("/reviews", requireAuth, async (c) => {
     const allReviewsForPg = await Promise.all(
       allReviewIdsForPg.map((id: string) => kv.get(`review:${id}`))
     );
-    const validReviews = allReviewsForPg.filter(r => r !== null && typeof r.rating === 'number');
+    const validReviews = allReviewsForPg.filter((r: any) => r !== null && typeof r.rating === 'number');
 
     let totalRatingSum = 0;
     for (const r of validReviews) {
@@ -878,7 +901,7 @@ app.get("/pgs/:pgId/reviews", async (c) => {
     const reviewPromises = reviewIds.map(id => kv.get(`review:${id}`));
     const reviews = await Promise.all(reviewPromises);
     
-    return c.json(reviews.filter(r => r !== null));
+    return c.json(reviews.filter((r: any) => r !== null));
   } catch (error) {
     console.error('Error fetching reviews:', error);
     return c.json({ error: 'Failed to fetch reviews' }, 500);
@@ -1123,11 +1146,36 @@ app.get("/owner/bookings", requireAuth, async (c) => {
       ownerPGIds.includes(booking.pgId)
     );
 
+    console.log(`Owner ${userId} has ${ownerPGs.length} PGs and ${ownerBookings.length} bookings`);
+
     // Enrich bookings with PG and user info
     const enrichedBookings = await Promise.all(
       ownerBookings.map(async (booking: any) => {
-        const pg = await kv.get(`pg:${booking.pgId}`);
-        const user = await kv.get(`user:${booking.userId}`);
+        let pg = await kv.get(`pg:${booking.pgId}`);
+        let user = await kv.get(`user:${booking.userId}`);
+        
+        // If PG not found, use pgSnapshot if available
+        if (!pg && booking.pgSnapshot) {
+          pg = booking.pgSnapshot;
+        }
+        
+        // Ensure user has required fields
+        if (!user) {
+          user = {
+            name: 'Unknown User',
+            email: 'N/A',
+            phone: 'N/A',
+          };
+        }
+        
+        // Ensure pg has required fields
+        if (!pg) {
+          pg = {
+            name: 'Unknown PG',
+            location: 'N/A',
+          };
+        }
+        
         return {
           ...booking,
           pg,
@@ -1136,6 +1184,7 @@ app.get("/owner/bookings", requireAuth, async (c) => {
       })
     );
 
+    console.log(`Returning ${enrichedBookings.length} enriched bookings`);
     return c.json(enrichedBookings);
   } catch (error) {
     console.error('Error fetching owner bookings:', error);
@@ -1171,11 +1220,16 @@ app.put("/owner/bookings/:id", requireAuth, async (c) => {
 
     // Create notification for the student
     const notificationId = `notification-${Date.now()}-${booking.userId}`;
+    const notificationTitle = body.status === 'approved' ? 'Congratulations! 🎉' : `Booking ${body.status}`;
+    const notificationMessage = body.status === 'approved' 
+      ? `Your booking is confirmed for ${pg.name}` 
+      : `Your booking for ${pg.name} has been ${body.status}`;
+    
     const notification = {
       id: notificationId,
       userId: booking.userId,
-      title: `Booking ${body.status}`,
-      message: `Your booking for ${pg.name} has been ${body.status}`,
+      title: notificationTitle,
+      message: notificationMessage,
       bookingId: bookingId,
       read: false,
       createdAt: new Date().toISOString(),

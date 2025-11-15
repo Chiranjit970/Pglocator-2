@@ -7,20 +7,7 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { toast } from 'sonner';
 import PGDetailsModal from './PGDetailsModal';
 
-interface PG {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  location: string;
-  distance: number;
-  gender: string;
-  images: string[];
-  amenities: string[];
-  rating: number;
-  reviews: number;
-  verified: boolean;
-}
+import { PG } from '../../types/pg';
 
 interface FavoritesPageProps {
   onBack: () => void;
