@@ -1,13 +1,16 @@
-import { Hono, Context, Next } from "hono";
-import { cors } from "hono/cors";
-import { logger } from "hono/logger";
-import { createClient } from "@supabase/supabase-js";
+import { Hono } from "npm:hono";
+import type { Context, Next } from "npm:hono";
+import { cors } from "npm:hono/cors";
+import { logger } from "npm:hono/logger";
+import { createClient } from "npm:@supabase/supabase-js";
 import * as kv from "./kv_store.ts";
 
 // Provide a loose Deno declaration so TypeScript checks in non-Deno environments don't fail.
 declare const Deno: any;
 
 const app = new Hono();
+// Startup log
+console.log('[edge] server function starting up');
 
 // Small helper to safely read values set on the Hono context without triggering strict generic errors.
 function getCtxValue<T = any>(c: Context, key: string): T | null {
@@ -27,6 +30,13 @@ const supabase = createClient(
 
 // Enable logger
 app.use('*', logger(console.log));
+// Per-request simple logs for Supabase dashboard visibility
+app.use('*', async (c: Context, next: Next) => {
+  const start = Date.now();
+  console.log(`[edge:req] ${c.req.method} ${c.req.path}`);
+  await next();
+  console.log(`[edge:res] ${c.req.method} ${c.req.path} ${Date.now() - start}ms`);
+});
 
 // Enable CORS for all routes and methods
 app.use(
@@ -60,13 +70,20 @@ const requireAuth = async (c: Context, next: Next) => {
   await next();
 };
 
-// Health check endpoint
-app.get("/health", (c) => {
+// Health check endpoint (prefixed alias)
+app.get("/server/make-server-2c39c550/health", (c: Context) => {
   return c.json({ status: "ok" });
 });
 
+// Simplified health endpoints that return plain text immediately
+app.get('/ping', (c: Context) => c.text('pong'));
+app.get('/health', (c: Context) => c.text('ok'));
+app.get('/make-server-2c39c550/ping', (c: Context) => c.text('pong'));
+app.get('/make-server-2c39c550/health-plain', (c: Context) => c.text('ok'));
+
 // Diagnostic endpoint to check demo users status
-app.get("/diagnose-demo-users", async (c) => {
+// Diagnostic endpoint alias under prefix
+app.get("/server/make-server-2c39c550/diagnose-demo-users", async (c: Context) => {
   try {
     const demoEmails = [
       'teststuff677+test@gmail.com',
@@ -111,7 +128,8 @@ app.get("/diagnose-demo-users", async (c) => {
 });
 
 // ===== INITIALIZE DEMO USERS =====
-app.post("/init-demo-users", async (c) => {
+// Initialize demo users (prefixed alias)
+app.post("/server/make-server-2c39c550/init-demo-users", async (c: Context) => {
   try {
     const demoUsers = [
       {
@@ -236,15 +254,20 @@ app.post("/init-demo-users", async (c) => {
 });
 
 // ===== INITIALIZE SAMPLE DATA =====
-app.post("/init-data", async (c) => {
+// Initialize sample data (prefixed alias)
+app.post("/server/make-server-2c39c550/init-data", async (c: Context) => {
   try {
-    const ownerId = 'effce8e3-746a-4c37-a53d-9d91403ac25d';
+    const allUsers = await kv.getByPrefix('user:') || [];
+    const demoOwnerProfile = allUsers.find((p: any) => p.email === 'teststuff677+test1@gmail.com' && p.role === 'owner');
+    const ownerId = demoOwnerProfile?.id;
+
+    if (!ownerId) {
+      return c.json({ error: "Demo owner not found. Please run /init-demo-users first." }, 400);
+    }
 
     const samplePGs = [
       {
-        id: '1',
         name: 'ADTU Comfort Stay',
-        ownerId: ownerId,
         description: 'Premium PG accommodation with modern amenities, just 5 minutes walk from campus. Fully furnished rooms with attached bathrooms.',
         price: 8500,
         location: 'Panikhaiti, Near ADTU Gate 1',
@@ -269,9 +292,7 @@ app.post("/init-data", async (c) => {
         ],
       },
       {
-        id: '2',
         name: 'Scholar\'s Den',
-        ownerId: ownerId,
         description: 'Affordable and comfortable accommodation for female students. Safe neighborhood with 24/7 security.',
         price: 7000,
         location: 'Amingaon, 1.2 km from ADTU',
@@ -297,9 +318,7 @@ app.post("/init-data", async (c) => {
         ],
       },
       {
-        id: '3',
         name: 'Campus View Residency',
-        ownerId: ownerId,
         description: 'Spacious rooms with excellent facilities. Close to local markets and public transport.',
         price: 9000,
         location: 'Khanapara, Near ADTU',
@@ -324,9 +343,7 @@ app.post("/init-data", async (c) => {
         ],
       },
       {
-        id: '4',
         name: 'Green Valley PG',
-        ownerId: ownerId,
         description: 'Peaceful environment with home-cooked meals. Ideal for students who prefer a quiet study atmosphere.',
         price: 6500,
         location: 'Jalukbari, 2 km from ADTU',
@@ -338,11 +355,9 @@ app.post("/init-data", async (c) => {
           'https://images.unsplash.com/photo-1579632151052-92f741fb9b79?w=800',
         ],
         amenities: ['WiFi', 'Meals', 'Laundry'],
-        rating: 4.1,
-        reviews: 12,
-        verified: false,
-        verificationStatus: 'pending',
-        active: false,
+        verified: true,
+        verificationStatus: 'verified',
+        active: true,
         ownerName: 'Suresh Das',
         ownerPhone: '+91 98765 43213',
         roomTypes: [
@@ -351,9 +366,7 @@ app.post("/init-data", async (c) => {
         ],
       },
       {
-        id: '5',
         name: 'Elite Student Housing',
-        ownerId: ownerId,
         description: 'Premium accommodation with gym, study room, and recreational facilities. Perfect for serious students.',
         price: 10500,
         location: 'Panikhaiti, Adjacent to ADTU',
@@ -378,9 +391,7 @@ app.post("/init-data", async (c) => {
         ],
       },
       {
-        id: '6',
         name: 'Budget Student Stay',
-        ownerId: ownerId,
         description: 'Affordable option for students on a budget. Basic amenities with good connectivity to campus.',
         price: 5500,
         location: 'Amingaon, 1.5 km from ADTU',
@@ -394,9 +405,9 @@ app.post("/init-data", async (c) => {
         amenities: ['WiFi', 'Meals'],
         rating: 3.9,
         reviews: 8,
-        verified: false,
-        verificationStatus: 'pending',
-        active: false,
+        verified: true,
+        verificationStatus: 'verified',
+        active: true,
         ownerName: 'Ramesh Saikia',
         ownerPhone: '+91 98765 43215',
         roomTypes: [
@@ -406,9 +417,23 @@ app.post("/init-data", async (c) => {
       },
     ];
 
+    const existingPGs = await kv.getByPrefix('pg:') || [];
+
     // Store each PG
-    for (const pg of samplePGs) {
-      await kv.set(`pg:${pg.id}`, pg);
+    const timestamp = Date.now();
+    for (let i = 0; i < samplePGs.length; i++) {
+      const pg = samplePGs[i];
+      
+      // Check if a PG with the same name already exists
+      const pgExists = existingPGs.some((existingPG: any) => existingPG.name === pg.name);
+      if (pgExists) {
+        console.log(`Skipping creation of PG "${pg.name}" because it already exists.`);
+        continue;
+      }
+
+      (pg as any).id = `pg-${timestamp}-${ownerId}-${i}`; // Generate unique ID
+      (pg as any).ownerId = ownerId;
+      await kv.set(`pg:${(pg as any).id}`, pg);
     }
 
     return c.json({ message: 'Sample data initialized successfully', count: samplePGs.length });
@@ -419,7 +444,8 @@ app.post("/init-data", async (c) => {
 });
 
 // ===== USER SIGNUP ROUTE =====
-app.post("/auth/signup", async (c) => {
+// Auth signup (prefixed alias)
+app.post("/server/make-server-2c39c550/auth/signup", async (c: Context) => {
   try {
     const body = await c.req.json();
     const { email, password, name, role, ...metadata } = body;
@@ -496,7 +522,8 @@ app.post("/auth/signup", async (c) => {
 });
 
 // ===== GET USER PROFILE =====
-app.get("/user/profile", requireAuth, async (c) => {
+// User profile (prefixed alias)
+app.get("/server/make-server-2c39c550/user/profile", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const userEmail = getCtxValue<string>(c, 'userEmail');
@@ -549,15 +576,36 @@ app.get("/user/profile", requireAuth, async (c) => {
 
 // ===== GET ALL PGS =====
 // Public endpoint - students need to see PGs before logging in
-app.get("/pgs", async (c) => {
+// PG listing (prefixed alias)
+app.get("/server/make-server-2c39c550/pgs", async (c: Context) => {
   try {
     const allPGs = await kv.getByPrefix('pg:') || [];
     
-    // Filter to only return verified and active PGs (for students to see)
-    const verifiedPGs = allPGs.filter((pg: any) => pg.verified === true && pg.active === true);
+    // Filter to only return verified PGs
+    const visiblePGs = allPGs.filter((pg: any) => pg.verificationStatus === 'verified');
     
-    console.log(`Returning ${verifiedPGs.length} verified PGs out of ${allPGs.length} total PGs`);
-    return c.json(verifiedPGs);
+    // Deduplicate PGs based on a composite key of name and location for robustness
+    const uniquePGsMap = new Map();
+    visiblePGs.forEach((pg: any) => {
+      // Use a composite key of name and location as the primary unique identifier
+      if (pg.name && pg.location) {
+        const key = `${pg.name.toLowerCase().trim()}|${pg.location.toLowerCase().trim()}`;
+        if (!uniquePGsMap.has(key)) {
+          uniquePGsMap.set(key, pg);
+        }
+      } else if (pg.id) { // Fallback to ID if name or location is missing
+        // Use the ID as a fallback to avoid losing PGs that might be missing name/location
+        const key = `id:${pg.id}`;
+        if (!uniquePGsMap.has(key)) {
+          uniquePGsMap.set(key, pg);
+        }
+      }
+    });
+    const uniquePGs = Array.from(uniquePGsMap.values());
+    
+    console.log(`Returning ${uniquePGs.length} unique, verified, and active PGs out of ${allPGs.length} total PGs (found ${visiblePGs.length} visible PGs before deduplication)`);
+    
+    return c.json(uniquePGs);
   } catch (error) {
     console.error('Error fetching PGs:', error);
     return c.json({ error: 'Failed to fetch PGs' }, 500);
@@ -566,7 +614,8 @@ app.get("/pgs", async (c) => {
 
 // ===== GET SINGLE PG =====
 // For students, only return if verified. For owners/admins, return regardless of status.
-app.get("/pgs/:id", async (c) => {
+// PG details (prefixed alias)
+app.get("/server/make-server-2c39c550/pgs/:id", async (c: Context) => {
   try {
     const id = c.req.param('id');
     const pg = await kv.get(`pg:${id}`);
@@ -613,7 +662,8 @@ app.get("/pgs/:id", async (c) => {
 });
 
 // ===== GET USER FAVORITES =====
-app.get("/user/favorites", requireAuth, async (c) => {
+// Favorites list (prefixed alias)
+app.get("/server/make-server-2c39c550/user/favorites", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const favorites = await kv.get(`favorites:${userId}`);
@@ -639,7 +689,8 @@ app.get("/user/favorites", requireAuth, async (c) => {
 });
 
 // ===== ADD TO FAVORITES =====
-app.post("/user/favorites/:pgId", requireAuth, async (c) => {
+// Add favorite (prefixed alias)
+app.post("/server/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const pgId = c.req.param('pgId');
@@ -663,7 +714,8 @@ app.post("/user/favorites/:pgId", requireAuth, async (c) => {
 });
 
 // ===== REMOVE FROM FAVORITES =====
-app.delete("/user/favorites/:pgId", requireAuth, async (c) => {
+// Remove favorite (prefixed alias)
+app.delete("/server/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const pgId = c.req.param('pgId');
@@ -683,7 +735,8 @@ app.delete("/user/favorites/:pgId", requireAuth, async (c) => {
 });
 
 // ===== CREATE BOOKING =====
-app.post("/bookings", requireAuth, async (c) => {
+// Create booking (prefixed alias)
+app.post("/server/make-server-2c39c550/bookings", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const body = await c.req.json();
@@ -761,7 +814,8 @@ app.post("/bookings", requireAuth, async (c) => {
 });
 
 // ===== GET USER BOOKINGS =====
-app.get("/user/bookings", requireAuth, async (c) => {
+// List user bookings (prefixed alias)
+app.get("/server/make-server-2c39c550/user/bookings", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const bookingIds = await kv.get(`user-bookings:${userId}`) || [];
@@ -821,7 +875,8 @@ app.get("/user/bookings", requireAuth, async (c) => {
 });
 
 // ===== ADD REVIEW =====
-app.post("/reviews", requireAuth, async (c) => {
+// Create review (prefixed alias)
+app.post("/server/make-server-2c39c550/reviews", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const body = await c.req.json();
@@ -889,7 +944,8 @@ app.post("/reviews", requireAuth, async (c) => {
 });
 
 // ===== GET PG REVIEWS =====
-app.get("/pgs/:pgId/reviews", async (c) => {
+// List reviews for PG (prefixed alias)
+app.get("/server/make-server-2c39c550/pgs/:pgId/reviews", async (c: Context) => {
   try {
     const pgId = c.req.param('pgId');
     const reviewIds = await kv.get(`pg-reviews:${pgId}`) || [];
@@ -909,7 +965,8 @@ app.get("/pgs/:pgId/reviews", async (c) => {
 });
 
 // ===== UPDATE USER PROFILE =====
-app.put("/user/profile", requireAuth, async (c) => {
+// Update profile (prefixed alias)
+app.put("/server/make-server-2c39c550/user/profile", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const body = await c.req.json();
@@ -936,11 +993,12 @@ app.put("/user/profile", requireAuth, async (c) => {
 });
 
 // ===== NOTIFICATION ENDPOINTS =====
-app.options("/user/notifications", (c) => {
+app.options("/user/notifications", (c: Context) => {
   return c.json({}, 200);
 });
 
-app.get("/user/notifications", requireAuth, async (c) => {
+// Notifications list (prefixed alias)
+app.get("/server/make-server-2c39c550/user/notifications", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const notifications = await kv.get(`notifications:${userId}`) || [];
@@ -951,7 +1009,8 @@ app.get("/user/notifications", requireAuth, async (c) => {
   }
 });
 
-app.post("/user/notifications/:id/read", requireAuth, async (c) => {
+// Mark notification read (prefixed alias)
+app.post("/server/make-server-2c39c550/user/notifications/:id/read", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const notificationId = c.req.param('id');
@@ -978,7 +1037,8 @@ app.post("/user/notifications/:id/read", requireAuth, async (c) => {
 // ===== OWNER ENDPOINTS =====
 
 // Get owner stats
-app.get("/owner/stats", requireAuth, async (c) => {
+// Owner stats (prefixed alias)
+app.get("/server/make-server-2c39c550/owner/stats", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     
@@ -1035,7 +1095,8 @@ app.get("/owner/stats", requireAuth, async (c) => {
 });
 
 // Create new PG listing
-app.post("/owner/pgs", requireAuth, async (c) => {
+// Owner create PG (prefixed alias)
+app.post("/server/make-server-2c39c550/owner/pgs", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const body = await c.req.json();
@@ -1063,7 +1124,8 @@ app.post("/owner/pgs", requireAuth, async (c) => {
 });
 
 // Get owner's PG listings
-app.get("/owner/pgs", requireAuth, async (c) => {
+// Owner list PGs (prefixed alias)
+app.get("/server/make-server-2c39c550/owner/pgs", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const allPGs = await kv.getByPrefix('pg:') || [];
@@ -1077,7 +1139,8 @@ app.get("/owner/pgs", requireAuth, async (c) => {
 });
 
 // Update PG listing
-app.put("/owner/pgs/:id", requireAuth, async (c) => {
+// Owner update PG (prefixed alias)
+app.put("/server/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const pgId = c.req.param('id');
@@ -1108,7 +1171,8 @@ app.put("/owner/pgs/:id", requireAuth, async (c) => {
 });
 
 // Delete PG listing
-app.delete("/owner/pgs/:id", requireAuth, async (c) => {
+// Owner delete PG (prefixed alias)
+app.delete("/server/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const pgId = c.req.param('id');
@@ -1131,7 +1195,8 @@ app.delete("/owner/pgs/:id", requireAuth, async (c) => {
 });
 
 // Get owner's bookings
-app.get("/owner/bookings", requireAuth, async (c) => {
+// Owner list bookings (prefixed alias)
+app.get("/server/make-server-2c39c550/owner/bookings", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     
@@ -1193,7 +1258,8 @@ app.get("/owner/bookings", requireAuth, async (c) => {
 });
 
 // Update booking status
-app.put("/owner/bookings/:id", requireAuth, async (c) => {
+// Owner update booking (prefixed alias)
+app.put("/server/make-server-2c39c550/owner/bookings/:id", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const bookingId = c.req.param('id');
@@ -1248,8 +1314,43 @@ app.put("/owner/bookings/:id", requireAuth, async (c) => {
   }
 });
 
+// Owner delete booking
+app.delete("/server/make-server-2c39c550/owner/bookings/:id", requireAuth, async (c: Context) => {
+  try {
+    const userId = getCtxValue<string>(c, 'userId');
+    const bookingId = c.req.param('id');
+
+    const booking = await kv.get(`booking:${bookingId}`);
+    if (!booking) {
+      return c.json({ error: 'Booking not found' }, 404);
+    }
+
+    // Verify that this booking belongs to one of the owner's PGs
+    const pg = await kv.get(`pg:${booking.pgId}`);
+    if (!pg || pg.ownerId !== userId) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    // Delete the booking
+    await kv.del(`booking:${bookingId}`);
+
+    // Remove from user's booking list
+    let userBookings = await kv.get(`user-bookings:${booking.userId}`) || [];
+    if (Array.isArray(userBookings)) {
+      userBookings = userBookings.filter(id => id !== bookingId);
+      await kv.set(`user-bookings:${booking.userId}`, userBookings);
+    }
+
+    return c.json({ message: 'Booking deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting booking:', error);
+    return c.json({ error: 'Failed to delete booking' }, 500);
+  }
+});
+
 // Get owner's reviews
-app.get("/owner/reviews", requireAuth, async (c) => {
+// Owner reviews list (prefixed alias)
+app.get("/server/make-server-2c39c550/owner/reviews", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     
@@ -1284,7 +1385,7 @@ app.get("/owner/reviews", requireAuth, async (c) => {
 // ===== ADMIN ENDPOINTS =====
 
 // Get admin stats
-app.get("/admin/stats", requireAuth, async (c) => {
+app.get("/server/admin/stats", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1317,7 +1418,7 @@ app.get("/admin/stats", requireAuth, async (c) => {
 });
 
 // Get all PGs (admin)
-app.get("/admin/pgs", requireAuth, async (c) => {
+app.get("/server/admin/pgs", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1335,7 +1436,7 @@ app.get("/admin/pgs", requireAuth, async (c) => {
 });
 
 // Verify PG listing
-app.post("/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c) => {
+app.post("/server/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1361,6 +1462,27 @@ app.post("/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c) =>
     };
 
     await kv.set(`pg:${pgId}`, updatedPG);
+
+    // Create notification for the PG owner
+    if (pg.ownerId) {
+      const notificationId = `notification-${Date.now()}-${pg.ownerId}`;
+      const notification = {
+        id: notificationId,
+        userId: pg.ownerId,
+        title: 'Congratulations! 🎉',
+        message: `Your PG "${pg.name}" has been verified and is now live.`,
+        pgId: pgId,
+        read: false,
+        createdAt: new Date().toISOString(),
+      };
+      let ownerNotifications = await kv.get(`notifications:${pg.ownerId}`) || [];
+      if (!Array.isArray(ownerNotifications)) {
+        ownerNotifications = [];
+      }
+      ownerNotifications.unshift(notification);
+      await kv.set(`notifications:${pg.ownerId}`, ownerNotifications);
+    }
+
     console.log(`PG ${pgId} (${pg.name}) has been verified and activated by admin ${userId}`);
     return c.json({ message: 'PG verified successfully and is now active', pg: updatedPG });
   } catch (error) {
@@ -1370,7 +1492,7 @@ app.post("/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c) =>
 });
 
 // Reject PG listing
-app.post("/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c) => {
+app.post("/server/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1398,6 +1520,27 @@ app.post("/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c) =>
     };
 
     await kv.set(`pg:${pgId}`, updatedPG);
+
+    // Create notification for the PG owner
+    if (pg.ownerId) {
+      const notificationId = `notification-${Date.now()}-${pg.ownerId}`;
+      const notification = {
+        id: notificationId,
+        userId: pg.ownerId,
+        title: 'Action Required',
+        message: `Your PG "${pg.name}" has been rejected. Reason: ${body.reason || 'No reason provided'}`,
+        pgId: pgId,
+        read: false,
+        createdAt: new Date().toISOString(),
+      };
+      let ownerNotifications = await kv.get(`notifications:${pg.ownerId}`) || [];
+      if (!Array.isArray(ownerNotifications)) {
+        ownerNotifications = [];
+      }
+      ownerNotifications.unshift(notification);
+      await kv.set(`notifications:${pg.ownerId}`, ownerNotifications);
+    }
+
     console.log(`PG ${pgId} (${pg.name}) has been rejected by admin ${userId}`);
     return c.json({ message: 'PG rejected and removed from student view', pg: updatedPG });
   } catch (error) {
@@ -1407,7 +1550,7 @@ app.post("/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c) =>
 });
 
 // Get all users (admin)
-app.get("/make-server-2c39c550/admin/users", requireAuth, async (c) => {
+app.get("/server/make-server-2c39c550/admin/users", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1425,7 +1568,7 @@ app.get("/make-server-2c39c550/admin/users", requireAuth, async (c) => {
 });
 
 // Toggle user status
-app.post("/make-server-2c39c550/admin/users/:id/toggle-status", requireAuth, async (c) => {
+app.post("/server/make-server-2c39c550/admin/users/:id/toggle-status", requireAuth, async (c: Context) => {
   try {
     const adminId = getCtxValue<string>(c, 'userId');
     const adminProfile = await kv.get(`user:${adminId}`);
@@ -1456,7 +1599,7 @@ app.post("/make-server-2c39c550/admin/users/:id/toggle-status", requireAuth, asy
 });
 
 // Get analytics (admin)
-app.get("/make-server-2c39c550/admin/analytics", requireAuth, async (c) => {
+app.get("/server/make-server-2c39c550/admin/analytics", requireAuth, async (c: Context) => {
   try {
     const userId = getCtxValue<string>(c, 'userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1527,7 +1670,7 @@ Deno.serve(app.fetch);
 // ===== ADMIN: One-off migration to enrich existing bookings =====
 // Adds `selectedRoom` and `pgSnapshot` to bookings that are missing them.
 // Usage: POST /admin/migrate-bookings (must be an admin)
-app.post('/admin/migrate-bookings', requireAuth, async (c) => {
+app.post('/admin/migrate-bookings', requireAuth, async (c: Context) => {
   try {
     const adminId = getCtxValue<string>(c, 'userId');
     const adminProfile = await kv.get(`user:${adminId}`);
@@ -1577,3 +1720,171 @@ app.post('/admin/migrate-bookings', requireAuth, async (c) => {
     return c.json({ error: 'Migration failed', details: String(err) }, 500);
   }
 });
+
+// ===== ADMIN: One-off migration to enrich existing bookings =====
+// Adds `selectedRoom` and `pgSnapshot` to bookings that are missing them.
+// Usage: POST /admin/migrate-bookings (must be an admin)
+app.post('/admin/migrate-bookings', requireAuth, async (c: Context) => {
+  try {
+    const adminId = getCtxValue<string>(c, 'userId');
+    const adminProfile = await kv.get(`user:${adminId}`);
+    if (!adminProfile || adminProfile.role !== 'admin') {
+      return c.json({ error: 'Unauthorized - admin required' }, 403);
+    }
+
+    const allBookings = await kv.getByPrefix('booking:') || [];
+    let updated = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const b of allBookings) {
+      try {
+        if (!b || !b.id) continue;
+
+        // If both are present, skip
+        if (b.selectedRoom && b.pgSnapshot) {
+          skipped++;
+          continue;
+        }
+
+        const pg = await kv.get(`pg:${b.pgId}`) || null;
+
+        const selectedRoom = b.selectedRoom || (pg && Array.isArray(pg.roomTypes)
+          ? (pg.roomTypes.find((rt: any) => String(rt.type).toLowerCase() === String(b.roomType).toLowerCase()) || null)
+          : null);
+
+        const pgSnapshot = b.pgSnapshot || (pg ? {
+          id: pg.id,
+          name: pg.name,
+          rating: pg.rating,
+          reviews: pg.reviews,
+          images: Array.isArray(pg.images) ? pg.images.slice(0,2) : [],
+        } : null);
+
+        const newBooking = { ...b, selectedRoom, pgSnapshot };
+        await kv.set(`booking:${b.id}`, newBooking);
+        updated++;
+      } catch (err: any) {
+        errors.push(String(err));
+      }
+    }
+
+    return c.json({ message: 'Migration complete', updated, skipped, errors });
+  } catch (err) {
+    return c.json({ error: 'Migration failed', details: String(err) }, 500);
+  }
+});
+
+// ===== INITIALIZE DEMO BOOKINGS =====
+app.post("/server/make-server-2c39c550/init-demo-bookings", async (c: Context) => {
+  try {
+    const allUsers = await kv.getByPrefix('user:') || [];
+    const demoStudent = allUsers.find((u: any) => u.email === 'teststuff677+test@gmail.com' && u.role === 'student');
+    const demoOwner = allUsers.find((u: any) => u.email === 'teststuff677+test1@gmail.com' && u.role === 'owner');
+
+    if (!demoStudent) {
+      return c.json({ error: 'Demo student not found. Please run init-demo-users first.' }, 404);
+    }
+    if (!demoOwner) {
+      return c.json({ error: 'Demo owner not found. Please run init-demo-users first.' }, 404);
+    }
+
+    const studentId = demoStudent.id;
+    const ownerId = demoOwner.id;
+
+    const allPGs = await kv.getByPrefix('pg:') || [];
+    const samplePG1 = allPGs.find((pg: any) => pg.name === 'ADTU Comfort Stay');
+    const samplePG2 = allPGs.find((pg: any) => pg.name === 'Scholar\'s Den');
+
+    if (!samplePG1 || !samplePG2) {
+      return c.json({ error: 'Sample PGs not found. Please run init-data first.' }, 404);
+    }
+
+    const bookingsToCreate = [
+      // Pending booking (future check-in)
+      {
+        pgId: samplePG1.id,
+        roomType: 'Single',
+        checkIn: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
+        duration: 3,
+        totalAmount: samplePG1.roomTypes[0].price * 3,
+        status: 'pending',
+      },
+      // Active booking (approved, current check-in)
+      {
+        pgId: samplePG2.id,
+        roomType: 'Double',
+        checkIn: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days ago
+        duration: 6,
+        totalAmount: samplePG2.roomTypes[1].price * 6,
+        status: 'approved',
+      },
+      // Past booking (declined)
+      {
+        pgId: samplePG1.id,
+        roomType: 'Double',
+        checkIn: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
+        duration: 1,
+        totalAmount: samplePG1.roomTypes[1].price * 1,
+        status: 'declined',
+      },
+      // Past booking (completed)
+      {
+        pgId: samplePG2.id,
+        roomType: 'Single',
+        checkIn: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 60 days ago
+        duration: 2,
+        totalAmount: samplePG2.roomTypes[0].price * 2,
+        status: 'completed',
+      },
+    ];
+
+    const results = [];
+    let userBookingsList: string[] = await kv.get(`user-bookings:${studentId}`) || [];
+    if (!Array.isArray(userBookingsList)) {
+      userBookingsList = [];
+    }
+
+    for (const bookingData of bookingsToCreate) {
+      const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      const pg = allPGs.find((p: any) => p.id === bookingData.pgId);
+      
+      if (!pg) {
+        results.push({ ...bookingData, status: 'error', message: 'PG not found for booking' });
+        continue;
+      }
+
+      const selectedRoom = (pg.roomTypes || []).find((rt: any) => String(rt.type).toLowerCase() === String(bookingData.roomType).toLowerCase()) || null;
+
+      const booking: any = {
+        id: bookingId,
+        userId: studentId,
+        ownerId: pg.ownerId,
+        createdAt: new Date().toISOString(),
+        pgSnapshot: {
+          id: pg.id,
+          name: pg.name,
+          rating: pg.rating,
+          reviews: pg.reviews,
+          images: Array.isArray(pg.images) ? pg.images.slice(0, 2) : [],
+        },
+        selectedRoom,
+        ...bookingData,
+      };
+
+      await kv.set(`booking:${bookingId}`, booking);
+      userBookingsList.push(bookingId);
+      results.push({ id: bookingId, status: 'created', pgName: pg.name });
+    }
+
+    await kv.set(`user-bookings:${studentId}`, userBookingsList);
+
+    return c.json({ message: 'Demo bookings initialized successfully', results });
+  } catch (error) {
+    console.error('Error initializing demo bookings:', error);
+    return c.json({ error: 'Failed to initialize demo bookings', details: String(error) }, 500);
+  }
+});
+
+// Export the Hono fetch handler so Supabase can route requests
+export default app.fetch;

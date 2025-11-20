@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, CheckCircle, XCircle, Clock, User, Home, Calendar } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, User, Home, Calendar, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
@@ -111,7 +111,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
     setIsLoading(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/bookings`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -156,7 +156,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
   const handleApprove = async (bookingId: string) => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings/${bookingId}`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/bookings/${bookingId}`,
         {
           method: 'PUT',
           headers: {
@@ -185,7 +185,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
     
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/bookings/${bookingId}`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/bookings/${bookingId}`,
         {
           method: 'PUT',
           headers: {
@@ -205,6 +205,43 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
     } catch (error) {
       console.error('Error declining booking:', error);
       toast.error('Failed to decline booking');
+    }
+  };
+
+  const handleDelete = async (booking: Booking) => {
+    if (window.confirm('Are you sure you want to delete this booking? This action cannot be undone.')) {
+      try {
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/bookings/${booking.id}`,
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        if (response.ok) {
+          toast.success('Booking deleted successfully');
+          
+          // Send notification to student
+          const notification = {
+            user_id: booking.userId,
+            message: `Your booking for ${booking.pg.name} (${booking.roomType}) has been marked as expired by the owner.`,
+            type: 'booking_expired',
+          };
+
+          await supabase.from('notifications').insert(notification);
+
+          fetchAllBookings(); // Refetch all bookings
+        } else {
+          const errorData = await response.json();
+          toast.error(`Failed to delete booking: ${errorData.message}`);
+        }
+      } catch (error) {
+        console.error('Error deleting booking:', error);
+        toast.error('An unexpected error occurred while deleting the booking.');
+      }
     }
   };
 
@@ -363,7 +400,7 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
                       className="flex-1 lg:flex-none px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2"
                     >
                       <CheckCircle className="w-5 h-5" />
-                      Confirmed
+                      Approve
                     </button>
                     <button
                       onClick={() => handleDecline(booking.id)}
@@ -371,6 +408,17 @@ export default function BookingRequests({ onBack }: BookingRequestsProps) {
                     >
                       <XCircle className="w-5 h-5" />
                       Decline
+                    </button>
+                  </div>
+                )}
+                {(booking.status === 'approved' || booking.status === 'confirmed') && (
+                  <div className="flex lg:flex-col gap-3 lg:w-48">
+                    <button
+                      onClick={() => handleDelete(booking)}
+                      className="flex-1 lg:flex-none px-6 py-3 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                      Delete
                     </button>
                   </div>
                 )}

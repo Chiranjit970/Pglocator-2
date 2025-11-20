@@ -56,7 +56,7 @@ export default function OwnerDashboard() {
   const fetchStats = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/stats`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/stats`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,

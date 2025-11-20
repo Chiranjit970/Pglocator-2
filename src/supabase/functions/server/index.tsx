@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, Context } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { createClient } from "@supabase/supabase-js";
@@ -40,7 +40,7 @@ app.use(
 );
 
 // Auth middleware
-const requireAuth = async (c: any, next: any) => {
+const requireAuth = async (c: Context, next: () => Promise<void>) => {
   const accessToken = c.req.header('Authorization')?.split(' ')[1];
   
   if (!accessToken) {
@@ -60,12 +60,12 @@ const requireAuth = async (c: any, next: any) => {
 };
 
 // Health check endpoint
-app.get("/make-server-2c39c550/health", (c) => {
+app.get("/make-server-2c39c550/health", (c: Context) => {
   return c.json({ status: "ok" });
 });
 
 // Diagnostic endpoint to check demo users status
-app.get("/make-server-2c39c550/diagnose-demo-users", async (c) => {
+app.get("/make-server-2c39c550/diagnose-demo-users", async (c: Context) => {
   try {
     const demoEmails = [
       'teststuff677+test@gmail.com',
@@ -110,7 +110,7 @@ app.get("/make-server-2c39c550/diagnose-demo-users", async (c) => {
 });
 
 // ===== INITIALIZE DEMO USERS =====
-app.post("/make-server-2c39c550/init-demo-users", async (c) => {
+app.post("/make-server-2c39c550/init-demo-users", async (c: Context) => {
   try {
     const demoUsers = [
       {
@@ -234,7 +234,7 @@ app.post("/make-server-2c39c550/init-demo-users", async (c) => {
 });
 
 // ===== INITIALIZE SAMPLE DATA =====
-app.post("/make-server-2c39c550/init-data", async (c) => {
+app.post("/make-server-2c39c550/init-data", async (c: Context) => {
   try {
     const samplePGs = [
       {
@@ -409,7 +409,7 @@ app.post("/make-server-2c39c550/init-data", async (c) => {
 });
 
 // ===== USER SIGNUP ROUTE =====
-app.post("/make-server-2c39c550/auth/signup", async (c) => {
+app.post("/make-server-2c39c550/auth/signup", async (c: Context) => {
   try {
     const body = await c.req.json();
     const { email, password, name, role, ...metadata } = body;
@@ -486,7 +486,7 @@ app.post("/make-server-2c39c550/auth/signup", async (c) => {
 });
 
 // ===== GET USER PROFILE =====
-app.get("/make-server-2c39c550/user/profile", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/user/profile", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const userEmail = c.get('userEmail');
@@ -537,7 +537,7 @@ app.get("/make-server-2c39c550/user/profile", requireAuth, async (c) => {
   }
 });
 
-app.get("/make-server-2c39c550/pgs", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/pgs", requireAuth, async (c: Context) => {
   try {
     const allPGs = await kv.getByPrefix('pg:') || [];
     
@@ -554,7 +554,7 @@ app.get("/make-server-2c39c550/pgs", requireAuth, async (c) => {
 
 // ===== GET SINGLE PG =====
 // For students, only return if verified. For owners/admins, return regardless of status.
-app.get("/make-server-2c39c550/pgs/:id", async (c) => {
+app.get("/make-server-2c39c550/pgs/:id", async (c: Context) => {
   try {
     const id = c.req.param('id');
     const pg = await kv.get(`pg:${id}`);
@@ -601,7 +601,7 @@ app.get("/make-server-2c39c550/pgs/:id", async (c) => {
 });
 
 // ===== GET USER FAVORITES =====
-app.get("/make-server-2c39c550/user/favorites", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/user/favorites", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const favorites = await kv.get(`favorites:${userId}`);
@@ -627,7 +627,7 @@ app.get("/make-server-2c39c550/user/favorites", requireAuth, async (c) => {
 });
 
 // ===== ADD TO FAVORITES =====
-app.post("/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c) => {
+app.post("/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const pgId = c.req.param('pgId');
@@ -651,7 +651,7 @@ app.post("/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c) =>
 });
 
 // ===== REMOVE FROM FAVORITES =====
-app.delete("/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c) => {
+app.delete("/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const pgId = c.req.param('pgId');
@@ -671,7 +671,7 @@ app.delete("/make-server-2c39c550/user/favorites/:pgId", requireAuth, async (c) 
 });
 
 // ===== CREATE BOOKING =====
-app.post("/make-server-2c39c550/bookings", requireAuth, async (c) => {
+app.post("/make-server-2c39c550/bookings", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -712,7 +712,7 @@ app.post("/make-server-2c39c550/bookings", requireAuth, async (c) => {
 });
 
 // ===== GET USER BOOKINGS =====
-app.get("/make-server-2c39c550/user/bookings", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/user/bookings", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const bookingIds = await kv.get(`user-bookings:${userId}`) || [];
@@ -740,7 +740,7 @@ app.get("/make-server-2c39c550/user/bookings", requireAuth, async (c) => {
 });
 
 // ===== ADD REVIEW =====
-app.post("/make-server-2c39c550/reviews", requireAuth, async (c) => {
+app.post("/make-server-2c39c550/reviews", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -782,7 +782,7 @@ app.post("/make-server-2c39c550/reviews", requireAuth, async (c) => {
 });
 
 // ===== GET PG REVIEWS =====
-app.get("/make-server-2c39c550/pgs/:pgId/reviews", async (c) => {
+app.get("/make-server-2c39c550/pgs/:pgId/reviews", async (c: Context) => {
   try {
     const pgId = c.req.param('pgId');
     const reviewIds = await kv.get(`pg-reviews:${pgId}`) || [];
@@ -802,7 +802,7 @@ app.get("/make-server-2c39c550/pgs/:pgId/reviews", async (c) => {
 });
 
 // ===== UPDATE USER PROFILE =====
-app.put("/make-server-2c39c550/user/profile", requireAuth, async (c) => {
+app.put("/make-server-2c39c550/user/profile", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -831,7 +831,7 @@ app.put("/make-server-2c39c550/user/profile", requireAuth, async (c) => {
 // ===== OWNER ENDPOINTS =====
 
 // Get owner stats
-app.get("/make-server-2c39c550/owner/stats", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/owner/stats", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     
@@ -885,7 +885,7 @@ app.get("/make-server-2c39c550/owner/stats", requireAuth, async (c) => {
 });
 
 // Create new PG listing
-app.post("/make-server-2c39c550/owner/pgs", requireAuth, async (c) => {
+app.post("/make-server-2c39c550/owner/pgs", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -913,7 +913,7 @@ app.post("/make-server-2c39c550/owner/pgs", requireAuth, async (c) => {
 });
 
 // Get owner's PG listings
-app.get("/make-server-2c39c550/owner/pgs", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/owner/pgs", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const allPGs = await kv.getByPrefix('pg:') || [];
@@ -927,7 +927,7 @@ app.get("/make-server-2c39c550/owner/pgs", requireAuth, async (c) => {
 });
 
 // Update PG listing
-app.put("/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c) => {
+app.put("/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const pgId = c.req.param('id');
@@ -958,7 +958,7 @@ app.put("/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c) => {
 });
 
 // Delete PG listing
-app.delete("/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c) => {
+app.delete("/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const pgId = c.req.param('id');
@@ -981,7 +981,7 @@ app.delete("/make-server-2c39c550/owner/pgs/:id", requireAuth, async (c) => {
 });
 
 // Get owner's bookings
-app.get("/make-server-2c39c550/owner/bookings", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/owner/bookings", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     
@@ -1017,7 +1017,7 @@ app.get("/make-server-2c39c550/owner/bookings", requireAuth, async (c) => {
 });
 
 // Update booking status
-app.put("/make-server-2c39c550/owner/bookings/:id", requireAuth, async (c) => {
+app.put("/make-server-2c39c550/owner/bookings/:id", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const bookingId = c.req.param('id');
@@ -1049,7 +1049,7 @@ app.put("/make-server-2c39c550/owner/bookings/:id", requireAuth, async (c) => {
 });
 
 // Get owner's reviews
-app.get("/make-server-2c39c550/owner/reviews", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/owner/reviews", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     
@@ -1084,7 +1084,7 @@ app.get("/make-server-2c39c550/owner/reviews", requireAuth, async (c) => {
 // ===== ADMIN ENDPOINTS =====
 
 // Get admin stats
-app.get("/make-server-2c39c550/admin/stats", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/admin/stats", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1117,7 +1117,7 @@ app.get("/make-server-2c39c550/admin/stats", requireAuth, async (c) => {
 });
 
 // Get all PGs (admin)
-app.get("/make-server-2c39c550/admin/pgs", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/admin/pgs", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1135,7 +1135,7 @@ app.get("/make-server-2c39c550/admin/pgs", requireAuth, async (c) => {
 });
 
 // Verify PG listing
-app.post("/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c) => {
+app.post("/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1170,7 +1170,7 @@ app.post("/make-server-2c39c550/admin/pgs/:id/verify", requireAuth, async (c) =>
 });
 
 // Reject PG listing
-app.post("/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c) => {
+app.post("/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1207,7 +1207,7 @@ app.post("/make-server-2c39c550/admin/pgs/:id/reject", requireAuth, async (c) =>
 });
 
 // Get all users (admin)
-app.get("/make-server-2c39c550/admin/users", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/admin/users", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const userProfile = await kv.get(`user:${userId}`);
@@ -1225,7 +1225,7 @@ app.get("/make-server-2c39c550/admin/users", requireAuth, async (c) => {
 });
 
 // Toggle user status
-app.post("/make-server-2c39c550/admin/users/:id/toggle-status", requireAuth, async (c) => {
+app.post("/make-server-2c39c550/admin/users/:id/toggle-status", requireAuth, async (c: Context) => {
   try {
     const adminId = c.get('userId');
     const adminProfile = await kv.get(`user:${adminId}`);
@@ -1256,7 +1256,7 @@ app.post("/make-server-2c39c550/admin/users/:id/toggle-status", requireAuth, asy
 });
 
 // Get analytics (admin)
-app.get("/make-server-2c39c550/admin/analytics", requireAuth, async (c) => {
+app.get("/make-server-2c39c550/admin/analytics", requireAuth, async (c: Context) => {
   try {
     const userId = c.get('userId');
     const userProfile = await kv.get(`user:${userId}`);

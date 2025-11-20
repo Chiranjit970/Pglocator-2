@@ -4,6 +4,7 @@ import { ArrowLeft, Edit, Trash2, Eye, Search, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
+import { createClient } from '../../utils/supabase/client';
 
 interface ManagePGsProps {
   onBack: () => void;
@@ -16,6 +17,7 @@ interface PG {
   location: string;
   price: number;
   verified: boolean;
+  verificationStatus?: 'pending' | 'verified' | 'rejected';
   roomTypes: Array<{
     type: string;
     available: number;
@@ -27,17 +29,39 @@ export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
   const [pgs, setPgs] = useState<PG[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'verified' | 'pending'>('all');
-  const { accessToken } = useAuthStore();
+  const [filterStatus, setFilterStatus] = useState<'all' | 'verified' | 'pending' | 'rejected'>('all');
+  const { user, accessToken } = useAuthStore();
+  const supabase = createClient();
 
   useEffect(() => {
     fetchPGs();
-  }, []);
+
+    const channel = supabase
+      .channel('pg-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'pgs',
+          filter: `owner_id=eq.${user?.id}`,
+        },
+        (payload) => {
+          console.log('PG updated:', payload.new);
+          fetchPGs(); // Refetch all PGs to ensure consistency
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const fetchPGs = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/pgs`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/pgs`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -48,6 +72,8 @@ export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
       if (response.ok) {
         const data = await response.json();
         setPgs(data);
+      } else {
+        toast.error('Failed to load your listings from edge function');
       }
     } catch (error) {
       console.error('Error fetching PGs:', error);
@@ -62,7 +88,7 @@ export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
 
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/pgs/${id}`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/pgs/${id}`,
         {
           method: 'DELETE',
           headers: {
@@ -86,9 +112,18 @@ export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
   const filteredPGs = pgs.filter(pg => {
     const matchesSearch = pg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          pg.location.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' ||
-                         (filterStatus === 'verified' && pg.verified) ||
-                         (filterStatus === 'pending' && !pg.verified);
+    
+    let matchesFilter = false;
+    if (filterStatus === 'all') {
+      matchesFilter = true;
+    } else if (filterStatus === 'verified') {
+      matchesFilter = pg.verified === true;
+    } else if (filterStatus === 'pending') {
+      matchesFilter = pg.verificationStatus === 'pending' || (pg.verified === false && pg.verificationStatus !== 'rejected');
+    } else if (filterStatus === 'rejected') {
+      matchesFilter = pg.verificationStatus === 'rejected';
+    }
+    
     return matchesSearch && matchesFilter;
   });
 
@@ -165,6 +200,16 @@ export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
             >
               Pending
             </button>
+            <button
+              onClick={() => setFilterStatus('rejected')}
+              className={`px-4 py-3 rounded-xl transition-all ${
+                filterStatus === 'rejected'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+              }`}
+            >
+              Rejected
+            </button>
           </div>
         </div>
       </div>
@@ -210,13 +255,17 @@ export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
                       <p className="text-stone-600 text-sm">{pg.location}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {pg.verified ? (
+                      {pg.verificationStatus === 'verified' ? (
                         <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs">
                           Verified
                         </span>
+                      ) : pg.verificationStatus === 'rejected' ? (
+                        <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs">
+                          Rejected
+                        </span>
                       ) : (
                         <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs">
-                          Pending Verification
+                          Pending
                         </span>
                       )}
                     </div>
@@ -237,8 +286,12 @@ export default function ManagePGs({ onBack, onSelectPG }: ManagePGsProps) {
                     </div>
                     <div>
                       <p className="text-stone-500 text-xs mb-1">Status</p>
-                      <p className={pg.verified ? 'text-green-600' : 'text-amber-600'}>
-                        {pg.verified ? 'Active' : 'Pending'}
+                      <p className={
+                        pg.verificationStatus === 'verified' ? 'text-green-600' :
+                        pg.verificationStatus === 'rejected' ? 'text-red-600' :
+                        'text-amber-600'
+                      }>
+                        {pg.verificationStatus ? pg.verificationStatus.charAt(0).toUpperCase() + pg.verificationStatus.slice(1) : 'Pending'}
                       </p>
                     </div>
                   </div>

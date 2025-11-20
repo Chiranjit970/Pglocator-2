@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 import { useAuthStore } from '../../store/authStore';
 import { projectId } from '../../utils/supabase/info';
+import { createClient } from '../../utils/supabase/client';
 
 interface PGVerificationProps {
   onBack: () => void;
@@ -54,9 +55,10 @@ export default function PGVerification({ onBack, onUpdate }: PGVerificationProps
   }, []);
 
   const fetchPGs = async () => {
+    setIsLoading(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/admin/pgs`,
+        `https://${projectId}.supabase.co/functions/v1/server/admin/pgs`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -81,7 +83,7 @@ export default function PGVerification({ onBack, onUpdate }: PGVerificationProps
   const handleVerify = async (pgId: string) => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/admin/pgs/${pgId}/verify`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/admin/pgs/${pgId}/verify`,
         {
           method: 'POST',
           headers: {
@@ -112,7 +114,7 @@ export default function PGVerification({ onBack, onUpdate }: PGVerificationProps
 
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/admin/pgs/${selectedPG.id}/reject`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/admin/pgs/${selectedPG.id}/reject`,
         {
           method: 'POST',
           headers: {

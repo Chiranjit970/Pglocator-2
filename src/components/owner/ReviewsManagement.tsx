@@ -35,7 +35,7 @@ export default function ReviewsManagement({ onBack }: ReviewsManagementProps) {
   const fetchReviews = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/reviews`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/reviews`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,

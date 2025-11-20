@@ -169,7 +169,7 @@ export default function InitializeData() {
           console.log('Initializing PG data...');
           
           const pgResponse = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/init-data`,
+            `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/init-data`,
             {
               method: 'POST',
               headers: {
@@ -190,7 +190,7 @@ export default function InitializeData() {
           
           try {
             const userResponse = await fetch(
-              `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/init-demo-users`,
+              `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/init-demo-users`,
               {
                 method: 'POST',
                 headers: {

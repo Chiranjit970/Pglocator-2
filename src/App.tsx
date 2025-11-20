@@ -9,7 +9,8 @@ import AdminDashboard from './components/admin/AdminDashboard';
 import InitializeData from './components/InitializeData';
 import { useAuthStore } from './store/authStore';
 import { createClient } from './utils/supabase/client';
-import { projectId } from './utils/supabase/info';
+import { projectId, publicAnonKey } from './utils/supabase/info';
+import { buildDemoProfile, getDemoRoleByEmail } from './utils/demoFallback';
 
 type AppState = 'loading' | 'splash' | 'onboarding' | 'auth' | 'app';
 type UserRole = 'student' | 'owner' | 'admin' | null;
@@ -20,8 +21,8 @@ export default function App() {
   const { user, setUser, setAccessToken, setIsLoading } = useAuthStore();
   const isLoggingIn = useRef(false);
 
-  // Debug logging
-  console.log('App render - appState:', appState, 'user:', user?.role, user?.name);
+  // Debug logging (avoid undefined noise)
+  console.log('App render - appState:', appState, 'user:', user ? `${user.role} ${user.name}` : 'not set');
 
   useEffect(() => {
     const supabase = createClient();
@@ -40,7 +41,7 @@ export default function App() {
         setAccessToken(session.access_token);
         try {
           const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/profile`,
+            `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/profile`,
             {
               headers: {
                 Authorization: `Bearer ${session.access_token}`,
@@ -55,19 +56,50 @@ export default function App() {
             setSelectedRole(profile.role);
             setAppState('app');
           } else {
-            // If profile fetch fails, sign out user
-            await supabase.auth.signOut();
+            // Fallback for demo accounts when profile fetch fails
+            const email = session.user?.email || '';
+            const demoRole = getDemoRoleByEmail(email);
+            if (demoRole) {
+              const demoProfile = buildDemoProfile(email);
+              console.warn('Profile fetch failed - using demo fallback profile');
+              setUser(demoProfile);
+              localStorage.setItem('userRole', demoProfile.role);
+              setSelectedRole(demoProfile.role);
+              setAppState('app');
+            } else {
+              await supabase.auth.signOut();
+            }
           }
         } catch (error) {
           console.error('Error fetching profile:', error);
-          await supabase.auth.signOut();
+          // Network/DNS fallback for demo accounts
+          const email = session.user?.email || '';
+          const demoRole = getDemoRoleByEmail(email);
+          if (demoRole) {
+            const demoProfile = buildDemoProfile(email);
+            console.warn('Network error - using demo fallback profile');
+            setUser(demoProfile);
+            localStorage.setItem('userRole', demoProfile.role);
+            setSelectedRole(demoProfile.role);
+            setAppState('app');
+          } else {
+            await supabase.auth.signOut();
+          }
         } finally {
           setIsLoading(false);
         }
       }
     });
 
-    initializeData();
+    // Gate initialization behind Supabase reachability
+    (async () => {
+      const reachable = await isSupabaseReachable();
+      if (reachable) {
+        initializeData();
+      } else {
+        console.warn('Supabase unreachable - skipping initialization');
+      }
+    })();
 
     return () => {
       subscription.unsubscribe();
@@ -94,7 +126,7 @@ export default function App() {
       
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/profile`,
+          `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/profile`,
           {
             headers: {
               Authorization: `Bearer ${session.access_token}`,
@@ -130,10 +162,13 @@ export default function App() {
     try {
       if (!isPGInitialized) {
         console.log('Initializing PG data...');
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/init-data`,
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/init-data`,
           {
             method: 'POST',
+            headers: {
+              Authorization: `Bearer ${publicAnonKey}`,
+            },
           }
         );
         if (response.ok) {
@@ -149,10 +184,13 @@ export default function App() {
 
       if (!areUsersInitialized) {
         console.log('Initializing demo users...');
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/init-demo-users`,
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/init-demo-users`,
           {
             method: 'POST',
+            headers: {
+              Authorization: `Bearer ${publicAnonKey}`,
+            },
           }
         );
         if (response.ok) {
@@ -172,7 +210,20 @@ export default function App() {
         console.log('Demo users already initialized');
       }
     } catch (error) {
-      console.error('Error initializing data:', error);
+      console.warn('Initialization skipped due to connectivity issues');
+    }
+  };
+
+  // Quick reachability check to reduce noisy errors during outages
+  const isSupabaseReachable = async (): Promise<boolean> => {
+    try {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 3000);
+      const resp = await fetch(`https://${projectId}.supabase.co/auth/v1/settings`, { signal: controller.signal });
+      clearTimeout(t);
+      return resp.ok;
+    } catch {
+      return false;
     }
   };
 

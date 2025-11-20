@@ -41,7 +41,7 @@ export default function OwnerProfile({ onBack }: OwnerProfileProps) {
     setIsSaving(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/profile`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/profile`,
         {
           method: 'PUT',
           headers: {

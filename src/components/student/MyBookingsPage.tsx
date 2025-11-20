@@ -88,7 +88,7 @@ export default function MyBookingsPage({ onBack }: MyBookingsPageProps) {
 
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/bookings`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/bookings`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -155,7 +155,7 @@ Thank you for using PG Locator!
 
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/bookings/${bookingId}`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/bookings/${bookingId}`,
         {
           method: 'DELETE',
           headers: {
@@ -186,7 +186,7 @@ Thank you for using PG Locator!
 
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/reviews`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/reviews`,
         {
           method: 'POST',
           headers: {

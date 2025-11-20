@@ -73,7 +73,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
   const fetchReviews = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/pgs/${pg.id}/reviews`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/pgs/${pg.id}/reviews`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -128,7 +128,7 @@ export default function PGDetailsModal({ pg, onClose }: PGDetailsModalProps) {
 
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/bookings`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/bookings`,
         {
           method: 'POST',
           headers: {

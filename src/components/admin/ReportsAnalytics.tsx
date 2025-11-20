@@ -37,7 +37,7 @@ export default function ReportsAnalytics({ onBack }: ReportsAnalyticsProps) {
   const fetchAnalytics = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/admin/analytics?range=${timeRange}`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/admin/analytics?range=${timeRange}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,

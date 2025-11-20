@@ -6,6 +6,7 @@ import { useRooms } from '../../hooks/useRooms';
 import { createClient } from '../../utils/supabase/client';
 import { useAuthStore } from '../../store/authStore';
 import { toast } from 'sonner';
+import { projectId } from '../../utils/supabase/info';
 
 import RoomCard from './RoomCard';
 import AddRoomModal from './AddRoomModal';
@@ -51,7 +52,7 @@ export default function PGDetailsPage({ pgId, onBack }: PGDetailsPageProps) {
       setPgError(null);
       try {
         const response = await fetch(
-          `https://odxrugzhcfeksxvnfmyn.supabase.co/functions/v1/make-server-2c39c550/pgs/${pgId}`,
+          `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/pgs/${pgId}`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,

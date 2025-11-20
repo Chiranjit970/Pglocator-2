@@ -11,6 +11,7 @@ import MyBookingsPage from './MyBookingsPage';
 import NotificationPanel from './NotificationPanel';
 
 import { PG, Notification } from '../../types/pg';
+import { createClient } from '../../utils/supabase/client';
 
 export default function StudentHome() {
   const { user, accessToken, logout } = useAuthStore();
@@ -34,56 +35,88 @@ export default function StudentHome() {
     amenities: [] as string[],
   });
 
+  const supabase = createClient();
+
   useEffect(() => {
     fetchPGs();
     fetchFavorites();
+    fetchNotifications(); // Initial fetch
     
     // Auto-refresh PGs every 30 seconds to get newly verified listings
     const refreshInterval = setInterval(() => {
       fetchPGs();
       fetchFavorites();
     }, 30000); // 30 seconds
+
+    // Real-time subscription for notifications
+    if (user?.id) {
+      const channel = supabase
+        .channel('student-notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            console.log('New notification received:', payload);
+            const newNotification = payload.new as Notification;
+            
+            // Show a toast
+            toast.info(newNotification.message, {
+              description: `From: ${newNotification.title || 'System'} `,
+            });
+
+            // Update state
+            setNotifications(prev => [newNotification, ...prev]);
+            setUnreadCount(prev => prev + 1);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        clearInterval(refreshInterval);
+        supabase.removeChannel(channel);
+      };
+    }
     
     return () => clearInterval(refreshInterval);
-  }, []);
+  }, [user?.id]);
 
-  // Fetch notifications only when panel is open
+  // No longer need to poll when panel is open
+  /*
   useEffect(() => {
     if (!showNotifications) return;
     
-    // Fetch immediately when panel opens
     fetchNotifications();
     
-    // Then refresh every 30 seconds while panel is open (to reduce server load)
-    // Only keep polling if there are unread notifications
     const notificationInterval = setInterval(() => {
       if (unreadCount > 0) {
         fetchNotifications();
       }
-    }, 30000); // 30 seconds
+    }, 30000);
     
     return () => clearInterval(notificationInterval);
   }, [showNotifications, unreadCount]);
+  */
 
   useEffect(() => {
     applyFilters();
   }, [pgs, searchQuery, filters]);
 
   const fetchPGs = async () => {
+    setIsLoading(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/pgs`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/pgs`
       );
       if (response.ok) {
         const data = await response.json();
         setPgs(data);
       } else {
-        toast.error('Failed to load PG listings.');
+        toast.error('Failed to load PG listings from edge function.');
       }
     } catch (error) {
       console.error('Error fetching PGs:', error);
@@ -97,14 +130,14 @@ export default function StudentHome() {
     if (!accessToken) return;
     
     try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/favorites`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/favorites`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
       if (response.ok) {
         const data = await response.json();
         setFavorites(new Set(data.map((fav: PG) => fav.id)));
@@ -120,7 +153,7 @@ export default function StudentHome() {
     setNotificationsLoading(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/notifications`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/notifications`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -141,7 +174,7 @@ export default function StudentHome() {
   };
 
   const applyFilters = () => {
-    let filtered = pgs;
+    let filtered = pgs.filter(pg => pg.verified);
 
     // Search filter
     if (searchQuery) {
@@ -183,7 +216,7 @@ export default function StudentHome() {
     }
 
     const isFavorite = favorites.has(pgId);
-    const url = `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/user/favorites/${pgId}`;
+    const url = `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/user/favorites/${pgId}`;
 
     try {
       const response = await fetch(url, {

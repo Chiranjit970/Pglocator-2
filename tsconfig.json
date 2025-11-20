@@ -15,6 +15,13 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "hono": ["./node_modules/hono"],
+      "hono/cors": ["./node_modules/hono/cors"],
+      "hono/logger": ["./node_modules/hono/logger"],
+      "@supabase/supabase-js": ["./node_modules/@supabase/supabase-js"]
+    },
 
     /* Linting */
     "strict": true,

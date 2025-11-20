@@ -93,7 +93,7 @@ export default function AddPGFlow({ onBack, onSuccess }: AddPGFlowProps) {
     
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/owner/pgs`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/owner/pgs`,
         {
           method: 'POST',
           headers: {

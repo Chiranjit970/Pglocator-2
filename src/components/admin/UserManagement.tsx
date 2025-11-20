@@ -36,7 +36,7 @@ export default function UserManagement({ onBack }: UserManagementProps) {
   const fetchUsers = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/admin/users`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/admin/users`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -61,7 +61,7 @@ export default function UserManagement({ onBack }: UserManagementProps) {
   const handleToggleUserStatus = async (userId: string, isActive: boolean) => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-2c39c550/admin/users/${userId}/toggle-status`,
+        `https://${projectId}.supabase.co/functions/v1/server/make-server-2c39c550/admin/users/${userId}/toggle-status`,
         {
           method: 'POST',
           headers: {

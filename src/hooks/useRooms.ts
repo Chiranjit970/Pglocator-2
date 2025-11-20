@@ -159,6 +159,9 @@ export const useRooms = (pgId: string) => {
 
         if (err) throw err;
         if (data) {
+          setRooms((prev) =>
+            prev.map((room) => (room.id === roomId ? data[0] : room))
+          );
           toast.success(`Room status updated to ${newStatus}`);
           return data[0];
         }
